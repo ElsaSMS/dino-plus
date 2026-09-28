@@ -1,0 +1,11 @@
+<!doctype html><html lang="zh-CN"><head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>声音试听室 · 小恐龙 PLUS</title><link rel="stylesheet" href="../visual-models/gallery.css"><link rel="stylesheet" href="./library.css">
+  <script src="./audio.js?v=20260927-jump-land-volume" defer></script><script src="./library.js?v=20260927-jump-land-volume" defer></script>
+</head><body class="asset-library">
+  <header class="library-header"><div><span class="eyebrow">DINO PLUS / SOUND COLLECTION</span><h1>听见每一段冒险</h1><p>夕阳下的节奏，起跳时的轻响。游戏的全部音乐与音效，都在这里。</p></div><nav><a href="../visual-models/index.html">视觉模型馆 ↗</a><a href="../index.html">回到游戏 ↗</a></nav></header>
+  <main class="audio-main"><div class="audio-toolbar"><label>试听音量 <input id="volume" type="range" min="0" max="100" value="55"><output id="volume-label">55%</output></label><button id="stop" type="button">停止播放</button><span id="status" role="status">选择一段声音开始试听</span></div>
+  <div id="clips" class="clip-grid"></div>
+  <details><summary>维护与重新导出</summary><p>音频由同目录 audio.js 合成，游戏与导出工具共用源代码。这里的 WAV 是 44.1 kHz、16 位、双声道文件，可以直接双击播放，也可复制到其他播放器。音乐文件含结尾淡出，游戏内仍连续循环；喷气试听为四秒片段。</p><p>修改音色后，点击每张卡片的“重新合成 WAV”下载最新文件，覆盖同名文件即可；生成过程完全离线。</p></details>
+  </main>
+</body></html>

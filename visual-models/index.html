@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>视觉模型馆 · 小恐龙 PLUS</title>
+  <link rel="stylesheet" href="../styles.css">
+  <link rel="stylesheet" href="./gallery.css">
+  <script src="./models.js?v=20260928-matched-legs" defer></script><script src="./gallery.js?v=20260928-thorn116-122" defer></script>
+</head>
+<body class="asset-library">
+  <header class="library-header"><div><span class="eyebrow">DINO PLUS / VISUAL COLLECTION</span><h1>夕阳里的小小世界</h1><p>角色、飞鸟与沿途风景。在这里，让每一个细节慢下来。</p></div><nav><a href="../audio/index.html">声音试听室 ↗</a><a href="../index.html">回到游戏 ↗</a></nav></header>
+  <main class="model-layout">
+    <aside><label for="search">寻找模型</label><input id="search" type="search" placeholder="角色、荆棘、护盾…"><div id="catalog" aria-label="视觉模型目录"></div></aside>
+    <section class="viewer">
+      <div class="viewer-heading"><div><span id="category" class="eyebrow"></span><h2 id="model-name"></h2></div><span class="live-label">● 实时模型</span></div>
+      <div class="stage"><canvas id="preview" width="1000" height="430" aria-label="所选模型的动态展示"></canvas><div id="warning" class="hazard-warning" hidden>⚠️</div></div>
+      <div class="controls"><button id="pause" type="button">暂停动画</button><button id="restart" type="button">重新播放</button><label>播放速度 <select id="speed"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option></select></label><button id="snapshot" type="button">保存画面 PNG</button></div>
+      <p id="description" class="description"></p><p class="footnote">展示页与游戏共用 models.js。可直接双击本页离线打开；动画预览不运行游戏碰撞与计分。</p>
+    </section>
+  </main>
+</body></html>

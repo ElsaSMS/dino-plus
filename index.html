@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f5efe2" />
+    <meta name="description" content="小恐龙 PLUS：可以二连跳、冲过悬崖、自由换装的夕阳跑酷游戏。" />
+    <title>小恐龙 PLUS · 夕阳冲刺</title>
+    <link rel="stylesheet" href="./styles.css?v=20260928-outfits" />
+  </head>
+  <body>
+    <div class="site-shell">
+      <header class="site-header">
+        <a class="brand" href="#top" aria-label="小恐龙 PLUS 首页">
+          <span class="brand-mark" aria-hidden="true">✦</span>
+          <span>小恐龙<span class="brand-plus">PLUS</span></span>
+        </a>
+        <span class="header-tag"><span class="live-dot"></span> 夕阳冲刺 · 无尽冒险</span>
+      </header>
+
+      <main id="top" class="layout">
+        <section class="main-column" aria-labelledby="hero-title">
+          <div class="hero-copy">
+            <div class="eyebrow"><span class="eyebrow-line"></span> THE LITTLE DINO, REIMAGINED</div>
+            <h1 id="hero-title">再跑一次，<em>跑得更远。</em></h1>
+            <p>太阳落山之前，再陪小恐龙跑一程。穿过金色旷野，迎着晚风，把今天的好心情带到更远的地方。</p>
+          </div>
+
+          <div class="mode-toolbar">
+            <div class="mode-picker" role="group" aria-label="选择游戏模式">
+              <button class="mode-option" id="classic-mode" type="button" aria-pressed="true" title="趁着晚霞正好，陪小恐龙跑向更远的地方。">
+                <span class="mode-symbol" aria-hidden="true">☀</span><span class="mode-option-copy"><strong>经典模式</strong><small>无尽冒险 · 跑得更远</small></span>
+              </button>
+              <button class="mode-option" id="extreme-mode" type="button" aria-pressed="false" title="迎着疾风穿过重重险境，一起奔向远方的终点。">
+                <span class="mode-symbol" aria-hidden="true"><svg width="24" height="28" viewBox="0 0 24 28" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M14 2 3 16h8l-1 10 11-15h-8z" /></svg></span><span class="mode-option-copy"><strong>极限模式</strong><small>十万米挑战 · 突破极限</small></span>
+              </button>
+            </div>
+            <div class="mode-caption"><p id="mode-description" aria-live="polite">迎着晚霞出发，刷新属于你的最远纪录。</p><button class="mode-reset" id="mode-reset" type="button" hidden disabled title="将进度和续命次数归零，暂停在起点">↻ 重置本轮</button></div>
+          </div>
+          <div class="game-card">
+            <div class="game-topbar">
+              <div class="game-label"><span class="game-label-icon">◈</span> 夕阳赛道 <span class="game-label-en">/ SUNSET RUN</span></div>
+              <div class="game-actions">
+                <div class="status-pill" id="status-pill"><span class="status-dot"></span><span id="status-text">准备出发</span></div>
+                <button class="view-toggle" id="view-toggle" type="button" aria-pressed="false" aria-label="放大游戏并隐藏侧栏" aria-controls="top"><span class="view-toggle-icon" aria-hidden="true">⤢</span><span id="view-toggle-label">放大游戏</span></button>
+              </div>
+            </div>
+            <div class="canvas-wrap" id="canvas-wrap">
+              <canvas id="game" width="1000" height="430" role="img" aria-label="小恐龙跑酷游戏画面"></canvas>
+              <div class="hazard-warning" id="hazard-warning" role="img" aria-label="前方即将出现石柱或运动飞鸟" hidden>⚠️</div>
+              <div class="game-hud" aria-live="off">
+                <div class="hud-stat"><span id="distance-label">本次距离</span><strong id="distance">0000</strong></div>
+                <div class="hud-divider"></div>
+                <div class="hud-stat"><span id="best-label">历史最佳</span><strong id="best">0000</strong></div>
+              </div>
+              <div class="overlay" id="overlay">
+                <div class="overlay-content">
+                  <span class="overlay-kicker" id="overlay-kicker">READY TO RUN?</span>
+                  <h2 id="overlay-title">冒险，从这一跃开始</h2>
+                  <p id="overlay-copy">空格跳跃，再按一次完成二连跳。空中按 ↓ 或 S 键快速下坠，落地后下蹲。</p>
+                  <button class="primary-button" id="start-button" type="button"><span id="start-button-label">开始冒险</span><span aria-hidden="true">↗</span></button>
+                </div>
+              </div>
+            </div>
+            <div class="game-footer">
+              <div class="keyboard-help"><span class="keycap">SPACE</span><span>跳跃 / 二连跳</span><span class="help-divider">·</span><span class="keycap">↓</span><span class="keycap">S</span><span>下蹲 / 空中速降</span></div>
+              <div class="footer-actions">
+                <div class="audio-controls" role="group" aria-label="游戏声音控制">
+                  <button class="audio-toggle" id="audio-toggle" type="button" aria-pressed="true" title="关闭游戏声音">♫ 声音</button>
+                  <label class="audio-level">音乐 <input id="music-volume" type="range" min="0" max="100" value="55" aria-label="背景音乐音量" /></label>
+                  <label class="audio-level">音效 <input id="effects-volume" type="range" min="0" max="100" value="55" aria-label="游戏音效音量" /></label>
+                </div>
+                <button class="text-button" id="pause-button" type="button" disabled>暂停</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="mobile-controls" aria-label="触屏游戏控制">
+            <button type="button" id="touch-duck" class="mobile-control duck-control">下蹲 / 速降 <span>↓</span></button>
+            <button type="button" id="touch-jump" class="mobile-control jump-control">跳跃 / 二连跳 <span>↑</span></button>
+          </div>
+
+        </section>
+
+        <aside class="sidebar" aria-labelledby="profile-heading">
+          <div class="profile-card">
+            <div class="card-heading"><div><span class="section-overline">YOUR ADVENTURE</span><h2 id="profile-heading">冒险档案<span>✦</span></h2></div><span class="card-heading-icon" aria-hidden="true">☼</span></div>
+            <label for="name-input" class="field-label">给你的小恐龙起个名字</label>
+            <div class="name-row"><input id="name-input" maxlength="16" autocomplete="nickname" placeholder="输入昵称" aria-describedby="name-hint" /><button id="save-name" type="button">保存</button></div>
+            <p id="name-hint" class="field-hint">同一浏览器仅有一份档案；改名不会清除纪录或装扮。</p>
+            <div class="card-rule"></div>
+            <div class="section-heading"><span>选择你的装扮</span><small>4 款造型</small></div>
+            <div class="outfit-grid" id="outfit-grid" role="group" aria-label="选择小恐龙装扮">
+              <button class="outfit-option selected" type="button" data-outfit="explorer" aria-pressed="true"><span class="outfit-portrait"><canvas width="320" height="272" aria-hidden="true"></canvas></span><strong>绿野探险</strong><small>经典围巾</small></button>
+              <button class="outfit-option" type="button" data-outfit="stargazer" aria-pressed="false"><span class="outfit-portrait"><canvas width="320" height="272" aria-hidden="true"></canvas></span><strong>星际旅人</strong><small>未来护目镜</small></button>
+              <button class="outfit-option" type="button" data-outfit="sunrider" aria-pressed="false"><span class="outfit-portrait"><canvas width="320" height="272" aria-hidden="true"></canvas></span><strong>落日骑士</strong><small>英勇披风</small></button>
+              <button class="outfit-option" type="button" data-outfit="minty" aria-pressed="false"><span class="outfit-portrait"><canvas width="320" height="272" aria-hidden="true"></canvas></span><strong>薄荷漫游</strong><small>轻快鸭舌帽</small></button>
+            </div>
+            <div class="card-rule"></div>
+            <div class="record-heading"><span>经典模式 · 最远距离</span><span class="tiny-star">✧</span></div>
+            <div class="best-score"><strong id="profile-best">0000</strong><span>米</span></div>
+            <p class="record-note" id="record-note">第一次冒险在等你出发。</p>
+            <div class="recent-heading">最近 5 次</div>
+            <ol class="recent-list" id="recent-list"><li class="empty-record">还没有跑酷纪录</li></ol>
+            <div class="card-rule"></div>
+            <div class="record-heading"><span>极限模式 · 100000 米</span><span class="tiny-star">✧</span></div>
+            <div class="best-score"><strong id="extreme-best">—</strong><span>次续命</span></div>
+            <p class="record-note">仅计完赛纪录 · 续命次数越少越好</p>
+            <div class="recent-heading">最近 5 次完赛</div>
+            <ol class="recent-list" id="extreme-recent"><li class="empty-record">还没有完成极限挑战</li></ol>
+          </div>
+        </aside>
+      </main>
+      <footer class="site-footer"><span>为每一次不服输的重来而造。</span><span>小恐龙 PLUS · 2026</span></footer>
+    </div>
+    <script src="./audio/audio.js?v=20260927-jump-land-volume" defer></script>
+    <script src="./visual-models/models.js?v=20260928-matched-legs" defer></script>
+    <script src="./game.js?v=20260928-extreme-reset-pause" defer></script>
+  </body>
+</html>
