@@ -283,7 +283,7 @@
       if (isRecord) profile.best = finalScore;
       writeStore(PROFILE_KEY, profile);
       updateProfileUI();
-      showOverlay(isRecord ? 'NEW PERSONAL BEST!' : 'THE RUN IS OVER', isRecord ? '新纪录，太精彩了！' : '别停，再跑一次！', `这次跑了 ${finalScore} 米。${isRecord ? '你的新纪录已保存。' : '再试试突破个人最佳。'}`, '再来一次');
+      showOverlay(isRecord ? 'NEW PERSONAL BEST!' : 'THE RUN IS OVER', '余添是废物', `这次跑了 ${finalScore} 米。${isRecord ? '你的新纪录已保存。' : '再试试突破个人最佳。'}`, '再来一次');
     }
   }
   function finishExtreme() {
