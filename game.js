@@ -133,7 +133,6 @@
   let recordCelebrated = false;
   let extremeMode = false;
   let rescueCount = 0;
-  let trainingBirdBag = [];
   let shieldUntil = 0;
   let shieldReady = false;
   let shieldBufferUntil = 0;
@@ -234,7 +233,6 @@
     powerupEpochX = 0;
     elapsed = 0; highScoreFlash = 0; recordCelebrated = false;
     rescueCount = 0; shieldUntil = 0;
-    trainingBirdBag = [];
     if (trainingMode) ui.best.textContent = '0';
     shieldReady = false; shieldBufferUntil = 0; shieldWarningSpawnAfter = 0;
     shieldRecoverySpawnPending = false; shieldWarningSpawnPending = false;
@@ -414,23 +412,11 @@
     weights.push(['gapPillar', pillarChance]);
     const selected = new Set(window.DinoTraining?.selectedKinds() || []);
     const eligible = weights.filter(([kind]) => selected.has(kind));
-    if (selected.has('movingLow') && selected.has('movingHigh')) {
-      const low = eligible.find(([kind]) => kind === 'movingLow');
-      const highIndex = eligible.findIndex(([kind]) => kind === 'movingHigh');
-      low[0] = 'movingBird';
-      low[1] += eligible[highIndex][1];
-      eligible.splice(highIndex, 1);
-    }
     if (!eligible.length) return null;
     const total = eligible.reduce((sum, [, weight]) => sum + weight, 0);
     let target = roll * total;
     for (const [kind, weight] of eligible) {
-      if (target < weight) {
-        if (kind !== 'movingBird') return kind;
-        if (!trainingBirdBag.length) trainingBirdBag = Math.random() < .5
-          ? ['movingLow', 'movingHigh'] : ['movingHigh', 'movingLow'];
-        return trainingBirdBag.pop();
-      }
+      if (target < weight) return kind;
       target -= weight;
     }
     return eligible.at(-1)[0];
