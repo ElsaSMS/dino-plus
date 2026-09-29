@@ -5,16 +5,17 @@
   const SPEED_KEY = 'elsasms.dino-plus.training.v1.speed';
   const kinds = [
     ['cactus', '普通荆棘'], ['bramble', '连续荆棘'], ['tallThorn', '高荆棘'],
-    ['gap', '普通悬崖'], ['collapseGap', '塌方悬崖'],
+    ['gap', '普通悬崖'], ['collapseGap', '塌方悬崖'], ['gapPillar', '柱子悬崖'],
     ['duck', '高空静止小鸟'], ['jump', '贴地静止小鸟'],
     ['movingHigh', '高空运动小鸟'], ['movingLow', '贴地运动小鸟'],
     ['giantGround', '贴地巨鸟'], ['giantHover', '悬空巨鸟']
   ];
   const known = new Set(kinds.map(([kind]) => kind));
+  const allKinds = [...known];
   let saved;
   try { saved = JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch { saved = null; }
-  let active = Array.isArray(saved) ? saved.filter((kind) => known.has(kind)) : kinds.map(([kind]) => kind);
-  if (!active.length) active = kinds.map(([kind]) => kind);
+  let active = Array.isArray(saved) ? saved.filter((kind) => known.has(kind)) : allKinds;
+  if (!active.length || allKinds.filter((kind) => kind !== 'gapPillar').every((kind) => active.includes(kind))) active = allKinds;
   let activeSpeed = 3.2;
   try { if (JSON.parse(localStorage.getItem(SPEED_KEY)) === 3.6) activeSpeed = 3.6; } catch { /* Use the default. */ }
 

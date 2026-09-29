@@ -151,6 +151,32 @@ test('local training generates only selected singleton hazards at renormalized o
   assert.equal(createGame().trainingMode(), false);
 });
 
+test('pillar cliff is one selectable training obstacle with its original relative share', () => {
+  const pillarOnly = createGame([], {}, ['gapPillar']);
+  pillarOnly.resetTraining();
+  for (let index = 0; index < 30; index++) {
+    pillarOnly.next(30000 + index * 3000);
+    pillarOnly.spawnObstacleGroup();
+  }
+  const obstacles = pillarOnly.obstacles();
+  assert.ok(obstacles.length > 0 && obstacles.length % 2 === 0);
+  for (let index = 0; index < obstacles.length; index += 2) {
+    assert.equal(obstacles[index].kind, 'gap');
+    assert.equal(obstacles[index].pillarScene, true);
+    assert.equal(obstacles[index + 1].kind, 'skyPillar');
+  }
+
+  const mixed = createGame([], {}, ['gapPillar', 'cactus']);
+  const x = 1000000;
+  const pillarChance = .08 + .02 * mixed.runPressure(x);
+  const ordinaryChance = (1 - pillarChance) * .95 ** 2 * .18;
+  const expectedShare = pillarChance / (pillarChance + ordinaryChance);
+  const count = Array.from({ length: 10000 }, (_, index) =>
+    mixed.trainingObstacleKind(x, (index + .5) / 10000))
+    .filter((kind) => kind === 'gapPillar').length;
+  assert.ok(Math.abs(count / 10000 - expectedShare) < .0002);
+});
+
 test('local training holds the selected 3.2x or 3.6x speed throughout each run', () => {
   const game = createGame([], {}, ['cactus'], 3.2);
   for (const x of [0, 10000, 100000, 1000000]) assert.equal(game.runSpeedAt(x), 1120);

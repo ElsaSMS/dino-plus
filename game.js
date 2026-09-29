@@ -399,12 +399,17 @@
   function trainingObstacleKind(x, roll = Math.random()) {
     const pressure = runPressure(x);
     const shift = .04 * pressure;
+    const pillarChance = .08 + pressure * .02;
+    // Exclude the two five-percent combination branches, then normalize the
+    // remaining singleton and pillar shares over the player's selection.
+    const ordinaryScale = (1 - pillarChance) * .95 ** 2;
     const weights = [
       ['cactus', .18], ['bramble', .18], ['gap', .07], ['tallThorn', .12],
       ['collapseGap', .09], ['duck', .08 - shift], ['jump', .08 - shift],
       ['movingLow', .06 + shift], ['movingHigh', .06 + shift],
       ['giantGround', .04], ['giantHover', .04]
-    ];
+    ].map(([kind, weight]) => [kind, weight * ordinaryScale]);
+    weights.push(['gapPillar', pillarChance]);
     const selected = new Set(window.DinoTraining?.selectedKinds() || []);
     const eligible = weights.filter(([kind]) => selected.has(kind));
     if (!eligible.length) return null;
@@ -444,7 +449,7 @@
     const recovery = rand(.83, 1.04) - runPressure(lastX) * .08;
     nextObstacleX = last.x + last.width + lastSpeed * Math.max(lastKind === 'bramble' ? .84 : .70, recovery);
   }
-  function spawnGapPillarScene() {
+  function spawnGapPillarScene(includeFollowup = !trainingMode) {
     const gapX = nextObstacleX;
     const targetSpeed = runSpeedAt(gapX);
     const pressure = runPressure(gapX);
@@ -452,7 +457,7 @@
     const pillar = makeObstacle('skyPillar', gapX + Math.round(targetSpeed * .26),
       Math.round(Math.max(22, targetSpeed * .027)));
     addObstacles(gap, pillar);
-    if (Math.random() < .10 + pressure * .16) {
+    if (includeFollowup && Math.random() < .10 + pressure * .16) {
       const brambleX = gapX + gap.width + targetSpeed * (.82 - pressure * .14);
       const brambleSpeed = runSpeedAt(brambleX);
       const bramble = makeObstacle('bramble', brambleX, obstacleWidth('bramble', brambleX, .35));
@@ -485,6 +490,9 @@
     if (!trainingMode && allowWarningHazard && nextObstacleX >= ADVANCED_DISTANCE
       && (!previous || !isDoubleJumpObstacle(previous.kind))
       && Math.random() < .08 + pressure * .02) {
+      kind = 'gapPillar';
+    }
+    if (kind === 'gapPillar') {
       if (previous) nextObstacleX = Math.max(nextObstacleX,
         previous.x + previous.width + runSpeedAt(previous.x) * .78);
       if (shieldWarningSpawnPending) {
@@ -501,6 +509,9 @@
     if (!trainingMode && nextObstacleX >= ADVANCED_DISTANCE && Math.random() < .05) { spawnCliffScene(); return; }
     kind = trainingMode ? trainingObstacleKind(nextObstacleX) : obstacleKind(nextObstacleX, Math.random());
     if (!kind) { nextObstacleX = Infinity; return; }
+    if (kind === 'gapPillar') {
+      spawnGapPillarScene(); return;
+    }
     if (!allowWarningHazard && isMovingBird(kind)) {
       kind = kind === 'movingHigh' ? 'duck' : 'jump';
     }
