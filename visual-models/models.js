@@ -139,6 +139,22 @@
       const y = 256 + Math.sin(i * 7.3) * 19;
       ctx.fillRect(x, y, 2, 2);
     }
+    ctx.save();
+    ctx.globalAlpha = .28;
+    ctx.strokeStyle = '#896d64'; ctx.lineWidth = 1.5;
+    for (let i = 0; i < 32; i++) {
+      const x = ((i * 151 - worldX * .48) % 1660 + 1660) % 1660 - 90;
+      const y = GROUND + 12 + (i * 47) % (H - GROUND - 20);
+      ctx.beginPath(); ctx.moveTo(x, y);
+      ctx.quadraticCurveTo(x + 19, y - 5, x + 43, y + 1); ctx.stroke();
+    }
+    ctx.fillStyle = '#f3d2ad';
+    for (let i = 0; i < 35; i++) {
+      const x = ((i * 113 - worldX * .48) % 1540 + 1540) % 1540 - 70;
+      const y = GROUND + 9 + (i * 67) % (H - GROUND - 15);
+      ctx.fillRect(x, y, 4, 2);
+    }
+    ctx.restore();
   }
   function solidGroundSegments(left, right) {
     const gaps = obstacles.filter((o) => isOpenGap(o)
@@ -157,7 +173,6 @@
     return segments;
   }
   function drawGround() {
-    ctx.fillStyle = '#624d3d'; ctx.fillRect(0, GROUND + 13, W, H - GROUND);
     const leftWorld = worldX - PLAYER_X;
     const gaps = obstacles.filter((o) => isOpenGap(o) && o.x + o.width > leftWorld && o.x < leftWorld + W);
     const segments = solidGroundSegments(0, W);
@@ -173,10 +188,6 @@
     }
     for (const gap of gaps) {
       const x = PLAYER_X + gap.x - worldX;
-      ctx.fillStyle = '#473c3b'; ctx.fillRect(x, GROUND + 10, gap.width, H - GROUND);
-      const deep = ctx.createLinearGradient(0, GROUND, 0, H);
-      deep.addColorStop(0, '#4d4344'); deep.addColorStop(1, '#2f343b');
-      ctx.fillStyle = deep; ctx.fillRect(x + 4, GROUND + 11, gap.width - 8, H - GROUND);
       ctx.fillStyle = '#a97858'; ctx.fillRect(x - 4, GROUND + 7, 7, 17); ctx.fillRect(x + gap.width - 3, GROUND + 7, 7, 17);
       if (gap.kind === 'collapseGap' && gap.collapseProgress < 1) {
         const t = Math.max(0, gap.collapseProgress);
