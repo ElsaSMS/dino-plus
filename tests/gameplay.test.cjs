@@ -222,6 +222,32 @@ test('local training keeps moving-bird-only selections after a rescue warning de
   assert.ok(game.obstacles().every((obstacle) => obstacle.kind === 'movingHigh'));
 });
 
+test('training balances both moving-bird heights without long same-height streaks', () => {
+  const normal = createGame();
+  for (const x of [20000, 1000000]) {
+    const kinds = Array.from({ length: 10000 }, (_, index) => normal.obstacleKind(x, (index + .5) / 10000));
+    const count = (kind) => kinds.filter((value) => value === kind).length;
+    assert.ok(Math.abs(count('movingLow') - count('movingHigh')) <= 1,
+      'classic mode gives both moving-bird heights the same probability');
+  }
+  let state = 30102026;
+  const random = () => ((state = (Math.imul(state, 1664525) + 1013904223) >>> 0) / 2 ** 32);
+  const game = createGame(random, {}, ['movingLow', 'movingHigh']);
+  game.resetTraining();
+  for (let index = 0; index < 1000; index++) game.spawnObstacleGroup();
+  const birds = game.obstacles().map((obstacle) => obstacle.kind);
+  assert.ok(birds.every((kind) => kind === 'movingLow' || kind === 'movingHigh'));
+  const high = birds.filter((kind) => kind === 'movingHigh').length;
+  assert.ok(Math.abs(high - (birds.length - high)) <= 1, 'both heights get equal practice time');
+  let streak = 1;
+  for (let index = 1; index < birds.length; index++) {
+    streak = birds[index] === birds[index - 1] ? streak + 1 : 1;
+    assert.ok(streak <= 2, 'a height cannot repeat more than twice in a row');
+  }
+  assert.equal(createGame([], {}, ['movingLow']).trainingObstacleKind(30000), 'movingLow');
+  assert.equal(createGame([], {}, ['movingHigh']).trainingObstacleKind(30000), 'movingHigh');
+});
+
 test('extreme: mode controls reset the run and record HUD; normal records remain intact', () => {
   const game = createGame();
   game.element('extreme-mode').click();
