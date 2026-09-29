@@ -39,6 +39,7 @@
   const SHIELD_BLAST_SPEED = 2600;
   const SHIELD_PICKUP_RADIUS = 19;
   const JETPACK_DISTANCE = 8000; // World units: 10 pixels of travel per displayed meter.
+  const trainingMode = Boolean(window.DinoTraining);
   const { RAINBOW, birdStyles, thornPalettes, outfits,
     highBirdWingPoints, outlinePoints, thornModules } = window.DinoModels;
   const highBirdWingTip = (o) => window.DinoModels.highBirdWingTip(o, elapsed);
@@ -153,7 +154,8 @@
       ? BASE_SPEED * (2 + (x - DOUBLE_SPEED_DISTANCE) / (TRIPLE_SPEED_DISTANCE - DOUBLE_SPEED_DISTANCE))
       : Math.min(MAX_SPEED, BASE_SPEED * 3 + (MAX_SPEED - BASE_SPEED * 3)
         * (x - TRIPLE_SPEED_DISTANCE) / (MAX_SPEED_DISTANCE - TRIPLE_SPEED_DISTANCE));
-  const runSpeedAt = (x) => extremeMode ? EXTREME_SPEED : speedAt(x);
+  const trainingSpeed = () => window.DinoTraining?.speedMultiplier?.() === 3.6 ? 3.6 : 3.2;
+  const runSpeedAt = (x) => trainingMode ? BASE_SPEED * trainingSpeed() : extremeMode ? EXTREME_SPEED : speedAt(x);
   const runPressure = (x) => extremeMode ? 1 : latePressure(x);
   // x is actual player travel since the most recent start / blast, in world pixels.
   const powerupMultiplier = (x) => x <= 10000 ? 0 : x >= 80000 ? 3 : Math.log2(x / 10000);
@@ -167,9 +169,9 @@
   const padded = (n) => String(Math.floor(n)).padStart(4, '0');
   function updateProfileUI() {
     ui.name.value = activeName;
-    ui.bestLabel.textContent = extremeMode ? '最佳 · 续命次数' : '历史最佳';
-    ui.distanceLabel.textContent = extremeMode ? '进度 · 共 100000 米' : '本次距离';
-    ui.best.textContent = extremeMode ? (profile.extremeBest ?? '—') : padded(profile.best);
+    ui.bestLabel.textContent = trainingMode ? '本轮续命' : extremeMode ? '最佳 · 续命次数' : '历史最佳';
+    ui.distanceLabel.textContent = trainingMode ? '练习距离' : extremeMode ? '进度 · 共 100000 米' : '本次距离';
+    ui.best.textContent = trainingMode ? String(rescueCount) : extremeMode ? (profile.extremeBest ?? '—') : padded(profile.best);
     ui.extremeBest.textContent = profile.extremeBest ?? '—';
     ui.extremeRecent.replaceChildren();
     if (!profile.extremeRecent.length) {
@@ -231,6 +233,7 @@
     powerupEpochX = 0;
     elapsed = 0; highScoreFlash = 0; recordCelebrated = false;
     rescueCount = 0; shieldUntil = 0;
+    if (trainingMode) ui.best.textContent = '0';
     shieldReady = false; shieldBufferUntil = 0; shieldWarningSpawnAfter = 0;
     shieldRecoverySpawnPending = false; shieldWarningSpawnPending = false;
     shieldBreakAt = -Infinity;
@@ -301,6 +304,11 @@
       '跑完 100000 米，共续命 ' + rescueCount + ' 次。' + (isRecord ? '创造了个人最佳！' : '续命越少，成绩越好。') + (saved ? '' : '浏览器未能保存，本次纪录仅在当前页面有效。'), '再挑战一次');
   }
   function showReadyOverlay() {
+    if (trainingMode) {
+      showOverlay('PRACTICE RUN', '把每一关练成拿手好戏',
+        `全程固定 ${trainingSpeed().toFixed(1)} 倍速，只会遇到你选中的单体障碍。碰撞后可继续练习。`, '开始练习');
+      return;
+    }
     showOverlay(extremeMode ? 'THE EXTREME RUN' : 'READY TO RUN?',
       extremeMode ? '十万米，挑战你的极限' : '冒险，从这一跃开始',
       extremeMode ? '全程 3.6 倍速，无道具、无限续命。跑完 100000 米，续命次数越少，成绩越好。'
@@ -310,7 +318,7 @@
   function makeObstacle(kind, x, width, extra = {}) {
     const seed = Math.random() * 10;
     const thornStyle = isThornKind(kind)
-      ? { height: kind === 'tallThorn' ? 116 + Math.floor(seed * .7) : 34 + Math.floor(seed * 3.1), palette: Math.floor(seed * 3) % thornPalettes.length }
+      ? { height: kind === 'tallThorn' ? 119 + Math.floor(seed * .5) : 34 + Math.floor(seed * 3.1), palette: Math.floor(seed * 3) % thornPalettes.length }
       : {};
     const motion = isMovingBird(kind)
       ? { baseFlightSpeed: 100 + seed * 2, flightSpeed: (100 + seed * 2) * (speed / BASE_SPEED) }
@@ -318,7 +326,7 @@
     return { kind, x, width, seed, ...thornStyle, ...motion, ...extra };
   }
   function maybeDropPowerup(obstacle) {
-    if (extremeMode) return;
+    if (extremeMode || trainingMode) return;
     if (jetpackActive) return;
     let x; let y;
     const centerX = obstacle.x + obstacle.width * .5;
@@ -388,6 +396,26 @@
           : roll < .86 - movingShift ? 'movingLow' : roll < .92 ? 'movingHigh'
           : roll < .96 ? 'giantGround' : 'giantHover';
   }
+  function trainingObstacleKind(x, roll = Math.random()) {
+    const pressure = runPressure(x);
+    const shift = .04 * pressure;
+    const weights = [
+      ['cactus', .18], ['bramble', .18], ['gap', .07], ['tallThorn', .12],
+      ['collapseGap', .09], ['duck', .08 - shift], ['jump', .08 - shift],
+      ['movingLow', .06 + shift], ['movingHigh', .06 + shift],
+      ['giantGround', .04], ['giantHover', .04]
+    ];
+    const selected = new Set(window.DinoTraining?.selectedKinds() || []);
+    const eligible = weights.filter(([kind]) => selected.has(kind));
+    if (!eligible.length) return null;
+    const total = eligible.reduce((sum, [, weight]) => sum + weight, 0);
+    let target = roll * total;
+    for (const [kind, weight] of eligible) {
+      if (target < weight) return kind;
+      target -= weight;
+    }
+    return eligible.at(-1)[0];
+  }
   function cliffNeighborKind(side, x, roll) {
     if (side === 'before') return roll < .60 ? 'cactus' : roll < .77 ? 'duck'
       : roll < .91 ? 'jump' : x > 2600 ? 'giantHover' : 'cactus';
@@ -454,7 +482,7 @@
     const warningLeadX = worldX + W - PLAYER_X
       + runSpeedAt(worldX) * HAZARD_WARNING_TIME + 90;
     let kind;
-    if (allowWarningHazard && nextObstacleX >= ADVANCED_DISTANCE
+    if (!trainingMode && allowWarningHazard && nextObstacleX >= ADVANCED_DISTANCE
       && (!previous || !isDoubleJumpObstacle(previous.kind))
       && Math.random() < .08 + pressure * .02) {
       if (previous) nextObstacleX = Math.max(nextObstacleX,
@@ -465,13 +493,14 @@
       }
       spawnGapPillarScene(); return;
     }
-    if (nextObstacleX >= ADVANCED_DISTANCE && Math.random() < .05) {
+    if (!trainingMode && nextObstacleX >= ADVANCED_DISTANCE && Math.random() < .05) {
       if (previous) nextObstacleX = Math.max(nextObstacleX,
         previous.x + previous.width + runSpeedAt(previous.x) * .72);
       spawnRhythmScene(); return;
     }
-    if (nextObstacleX >= ADVANCED_DISTANCE && Math.random() < .05) { spawnCliffScene(); return; }
-    kind = obstacleKind(nextObstacleX, Math.random());
+    if (!trainingMode && nextObstacleX >= ADVANCED_DISTANCE && Math.random() < .05) { spawnCliffScene(); return; }
+    kind = trainingMode ? trainingObstacleKind(nextObstacleX) : obstacleKind(nextObstacleX, Math.random());
+    if (!kind) { nextObstacleX = Infinity; return; }
     if (!allowWarningHazard && isMovingBird(kind)) {
       kind = kind === 'movingHigh' ? 'duck' : 'jump';
     }
@@ -521,6 +550,7 @@
   }
   function fillObstacles() {
     if (elapsed < shieldBufferUntil) return;
+    if (trainingMode && elapsed < shieldWarningSpawnAfter) return;
     if (shieldRecoverySpawnPending) {
       nextObstacleX = Math.max(nextObstacleX,
         worldX + W - PLAYER_X + runSpeedAt(worldX) * .35);
@@ -625,7 +655,7 @@
       const left = o.x + module.x;
       const scale = module.height / 53;
       const targets = [
-        { left: left + 13, right: left + 30, top: GROUND - 50 * scale, bottom: GROUND - 3 },
+        { left: left + 13, right: left + 30, top: GROUND - (o.kind === 'tallThorn' ? 51 : 50) * scale, bottom: GROUND - 3 },
         { left: left + 2, right: left + 10, top: GROUND - 39 * scale, bottom: GROUND - 20 * scale },
         { left: left + 34, right: left + 41, top: GROUND - 45 * scale, bottom: GROUND - 26 * scale }
       ];
@@ -774,6 +804,7 @@
   }
   function rescue(fromFall) {
     rescueCount += 1;
+    if (trainingMode) ui.best.textContent = String(rescueCount);
     if (fromFall || player.feetY > GROUND) {
       // The blast fills the current cliff. Restore the player here without skipping distance.
       player = { feetY: GROUND, vy: 0, jumps: 0, crouch: false, grounded: true, diving: false };
@@ -806,7 +837,7 @@
     if (extremeMode) dt = Math.min(dt, Math.max(0, EXTREME_DISTANCE - worldX) / speed);
     elapsed += dt;
     worldX += speed * dt;
-    const speedLabel = extremeMode ? '极限' : speed >= MAX_SPEED ? '极速' : '速度';
+    const speedLabel = trainingMode ? '训练' : extremeMode ? '极限' : speed >= MAX_SPEED ? '极速' : '速度';
     const speedText = jetpackActive
       ? `喷气飞行 · ${Math.max(0, Math.ceil((JETPACK_DISTANCE - worldX + jetpackStartX) / 10))} 米`
       : `${speedLabel} ×${(speed / BASE_SPEED).toFixed(1)}`;
@@ -869,17 +900,17 @@
     const hits = !invincible && !fell && elapsed >= shieldUntil ? obstacles.filter((o) => hitObstacle(o, boxes)) : [];
     const struckPillar = hits.some((o) => o.kind === 'skyPillar');
     if (fell || struckPillar) {
-      if (extremeMode) rescue(fell);
+      if (extremeMode || trainingMode) rescue(fell);
       else { endGame(); return; }
     } else if (hits.length) {
       if (shieldReady) consumeShield();
-      else if (extremeMode) rescue(false);
+      else if (extremeMode || trainingMode) rescue(false);
       else { endGame(); return; }
     }
     if (extremeMode && worldX >= EXTREME_DISTANCE) { finishExtreme(); return; }
     const current = score();
     ui.distance.textContent = padded(current);
-    if (!extremeMode && current > profile.best && !recordCelebrated) { highScoreFlash = 1.1; recordCelebrated = true; }
+    if (!extremeMode && !trainingMode && current > profile.best && !recordCelebrated) { highScoreFlash = 1.1; recordCelebrated = true; }
     highScoreFlash = Math.max(0, highScoreFlash - dt);
   }
 
@@ -937,6 +968,12 @@
     showOverlay('EXTREME RESET', '已回到 0 米', '准备好了再继续挑战。', '继续极限挑战');
     modeReset.blur();
   });
+  if (trainingMode) {
+    window.DinoTraining.resetRun = () => {
+      resetGame(); setMode('ready'); showReadyOverlay(); updateProfileUI();
+    };
+    showReadyOverlay();
+  }
   ui.audioToggle.addEventListener('click', () => {
     sound.setMuted(!sound.settings().muted);
     updateAudioControls();

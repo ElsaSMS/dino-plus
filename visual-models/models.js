@@ -85,7 +85,7 @@
     const step = count > 1 ? (o.width - 42) / (count - 1) : 0;
     return Array.from({ length: count }, (_, index) => ({
       x: index * step,
-      height: (o.height ?? 46) * (count > 1
+      height: (o.height ?? 46) * (count > 1 && o.kind !== 'tallThorn'
         ? .93 + .07 * Math.sin(index * 1.3 + (o.seed ?? 0))
         : 1)
     }));

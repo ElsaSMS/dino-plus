@@ -8,7 +8,7 @@ const source = fs.readFileSync(path.join(__dirname, '..', 'game.js'), 'utf8');
 const startup = '  updateAudioControls(); updateProfileUI(); fillObstacles(); draw(); requestAnimationFrame(frame);';
 assert.ok(source.includes(startup), 'game test hook location changed');
 
-function createGame(randomValues = [], store = {}) {
+function createGame(randomValues = [], store = {}, trainingKinds = null, trainingMultiplier = 3.2) {
   const drawCalls = [];
   const canvasContext = new Proxy({}, {
     get: (_, key) => key === 'createLinearGradient' || key === 'createRadialGradient'
@@ -48,7 +48,9 @@ function createGame(randomValues = [], store = {}) {
   const sandbox = {
     Math: randomMath,
     document: documentMock,
-    window: { addEventListener: (type, listener) => { windowListeners[type] = listener; } },
+    window: { addEventListener: (type, listener) => { windowListeners[type] = listener; },
+      ...(trainingKinds ? { DinoTraining: { selectedKinds: () => trainingKinds,
+        speedMultiplier: () => trainingMultiplier } } : {}) },
     localStorage: { getItem: (key) => store[key] ?? null, setItem: (key, value) => { store[key] = value; },
       removeItem: (key) => { delete store[key]; } }
   };
@@ -56,7 +58,7 @@ function createGame(randomValues = [], store = {}) {
     powerupMultiplier, movingBirdSpeed, triggerBlast,
     powerupEpoch: () => powerupEpochX,
     setPowerupDistance: (meters) => { powerupEpochX = worldX - meters * 10; },
-    speedAt, runSpeedAt, runPressure, latePressure, obstacleKind, obstacleWidth, cliffNeighborKind, makeObstacle, thornModules,
+    speedAt, runSpeedAt, runPressure, latePressure, obstacleKind, trainingObstacleKind, obstacleWidth, cliffNeighborKind, makeObstacle, thornModules,
     sceneTallThornSide, spawnObstacle, spawnObstacleGroup, spawnCliffScene, spawnGapPillarScene, spawnRhythmScene,
     startJetpack, updateJetpack, resetGame, consumeShield,
     jetpackActive: () => jetpackActive,
@@ -81,6 +83,7 @@ function createGame(randomValues = [], store = {}) {
     next: (x) => { nextObstacleX = x; },
     nextPosition: () => nextObstacleX,
     rescueCount: () => rescueCount,
+    trainingMode: () => trainingMode,
     setExtreme: (enabled) => { extremeMode = enabled; },
     warningTarget, timeUntilVisible, extremeMode: () => extremeMode,
     startForInputTest: () => { mode = 'running'; obstacles = []; nextObstacleX = Infinity; },
@@ -106,6 +109,8 @@ function createGame(randomValues = [], store = {}) {
     ...sandbox.gameTest,
     store, element: getElement,
     drawCalls,
+    resetTraining: () => sandbox.window.DinoTraining?.resetRun(),
+    setTrainingMultiplier: (value) => { trainingMultiplier = value; },
     keyDown: (code, repeat = false, target = documentMock.activeElement) => {
       const event = { code, repeat, target, defaultPrevented: false,
         preventDefault() { this.defaultPrevented = true; } };
@@ -119,6 +124,77 @@ function createGame(randomValues = [], store = {}) {
     activeTag: () => documentMock.activeElement.tagName
   };
 }
+
+test('local training generates only selected singleton hazards at renormalized original shares', () => {
+  const selected = ['cactus', 'movingHigh'];
+  const game = createGame([], {}, selected);
+  assert.equal(game.trainingMode(), true);
+  game.resetTraining();
+  assert.ok(game.obstacles().length > 0);
+  assert.ok(game.obstacles().every((obstacle) => selected.includes(obstacle.kind)));
+  assert.equal(game.shieldPickups().length, 0);
+  assert.equal(game.jetpackPickups().length, 0);
+  for (let index = 0; index < 100; index++) {
+    game.next(30000 + index * 500);
+    game.spawnObstacleGroup();
+  }
+  assert.ok(game.obstacles().every((obstacle) => selected.includes(obstacle.kind)),
+    'scene branches never add an unselected obstacle');
+  for (const x of [20000, 1000000]) {
+    const expected = Array.from({ length: 10000 }, (_, index) => game.obstacleKind(x, (index + .5) / 10000))
+      .filter((kind) => selected.includes(kind));
+    const actualCactus = Array.from({ length: 10000 }, (_, index) => game.trainingObstacleKind(x, (index + .5) / 10000))
+      .filter((kind) => kind === 'cactus').length;
+    const expectedCactus = expected.filter((kind) => kind === 'cactus').length / expected.length * 10000;
+    assert.ok(Math.abs(actualCactus - expectedCactus) <= 2);
+  }
+  assert.equal(createGame().trainingMode(), false);
+});
+
+test('local training holds the selected 3.2x or 3.6x speed throughout each run', () => {
+  const game = createGame([], {}, ['cactus'], 3.2);
+  for (const x of [0, 10000, 100000, 1000000]) assert.equal(game.runSpeedAt(x), 1120);
+  game.resetTraining();
+  game.startForInputTest(); game.tick(.016);
+  assert.equal(game.element('status-text').textContent, '训练 ×3.2');
+  game.setTrainingMultiplier(3.6);
+  game.resetTraining();
+  for (const x of [0, 10000, 100000, 1000000]) assert.equal(game.runSpeedAt(x), 1260);
+  game.startForInputTest(); game.tick(.016);
+  assert.equal(game.element('status-text').textContent, '训练 ×3.6');
+  assert.equal(createGame().runSpeedAt(0), 350, 'the formal game keeps its speed curve');
+});
+
+test('local training rescues without changing formal records and resets to the ready state', () => {
+  const game = createGame([], {}, ['cactus']);
+  game.startForInputTest();
+  game.setObstacles([{ kind: 'cactus', x: 0, width: 42, height: 46, seed: 0 }]);
+  game.tick(.016);
+  assert.equal(game.mode(), 'running');
+  assert.equal(game.rescueCount(), 1);
+  assert.equal(game.element('best').textContent, '1');
+  assert.ok(game.shieldBufferUntil() > game.elapsed());
+  assert.equal(game.profileState().best, 0);
+  game.resetTraining();
+  assert.equal(game.mode(), 'ready');
+  assert.equal(game.worldPosition(), 0);
+  assert.equal(game.rescueCount(), 0);
+  assert.ok(game.obstacles().every((obstacle) => obstacle.kind === 'cactus'));
+});
+
+test('local training keeps moving-bird-only selections after a rescue warning delay', () => {
+  const game = createGame([], {}, ['movingHigh']);
+  game.startForInputTest();
+  game.setObstacles([{ kind: 'cactus', x: 0, width: 42, height: 46, seed: 0 }]);
+  game.tick(.016);
+  assert.equal(game.rescueCount(), 1);
+  game.next(850);
+  game.tick(3.75);
+  assert.equal(game.obstacles().length, 0, 'nothing spawns while warning sounds are delayed');
+  game.tick(.1);
+  assert.ok(game.obstacles().length > 0);
+  assert.ok(game.obstacles().every((obstacle) => obstacle.kind === 'movingHigh'));
+});
 
 test('extreme: mode controls reset the run and record HUD; normal records remain intact', () => {
   const game = createGame();
@@ -297,7 +373,7 @@ test('update: tall thorns reuse ordinary modules and take shares from thorns and
   const singleJumpHeight = 650 ** 2 / (2 * 1700);
   for (const seed of [0, 5, 9.99]) {
     const thorn = game.makeObstacle('tallThorn', 1000, width);
-    assert.ok(thorn.height >= 116 && thorn.height <= 122);
+    assert.ok(thorn.height >= 119 && thorn.height <= 123);
     const modules = game.thornModules({ ...thorn, seed });
     assert.equal(modules.length, 2);
     assert.ok(modules.every((module) => module.height <= thorn.height && module.height >= thorn.height * .86));
@@ -1799,7 +1875,7 @@ test('rebalance: A and C have exactly 6% high thorns on either side, never both'
       counts[first ? 'before' : last ? 'after' : 'neither']++;
       for (const o of items.filter((o) => o.kind === 'tallThorn')) {
         assert.equal(o.width, 84);
-        assert.ok(o.height >= 116 && o.height <= 122);
+        assert.ok(o.height >= 119 && o.height <= 123);
       }
       assert.ok(items[1].x >= items[0].x + items[0].width);
       assert.ok(items[2].x >= items[1].x + items[1].width);
@@ -1807,8 +1883,8 @@ test('rebalance: A and C have exactly 6% high thorns on either side, never both'
     assert.deepEqual(counts, { before:60, after:60, neither:880 });
   }
   const game = createGame([0, .999999]);
-  assert.equal(game.makeObstacle('tallThorn', 0, 84).height, 116);
-  assert.equal(game.makeObstacle('tallThorn', 0, 84).height, 122);
+  assert.equal(game.makeObstacle('tallThorn', 0, 84).height, 119);
+  assert.equal(game.makeObstacle('tallThorn', 0, 84).height, 123);
   assert.equal(game.sceneTallThornSide(.06), 'after');
   assert.equal(game.sceneTallThornSide(.12), null);
 });

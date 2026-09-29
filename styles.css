@@ -52,3 +52,9 @@ body.game-expanded .sidebar{display:none}
 @media(max-width:420px){.footer-actions{flex-wrap:wrap;gap:6px}.audio-controls{width:100%;justify-content:flex-end;gap:6px}.audio-level{font-size:10px}#music-volume,#effects-volume{width:56px}}
 
 .outfit-portrait{display:block;width:88px;height:75px;overflow:hidden;border-radius:13px}.outfit-portrait canvas{display:block;width:100%;height:100%}.outfit-option{min-height:132px;padding:10px 5px;border-width:2px}.outfit-option strong{margin-top:7px;font-size:11px}.outfit-option small{font-size:10px;color:#7c897c}.outfit-option.selected{background:#f1f6ed;box-shadow:0 3px 12px #48653c0c}
+
+.header-actions{display:flex;align-items:center;gap:22px}
+.header-page-link{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:38px;padding:8px 14px;border:1px solid #b8cfb5;border-radius:999px;background:#eaf3e5;color:#315d43;font-size:12px;font-weight:800;text-decoration:none;white-space:nowrap;transition:background .15s,transform .15s,box-shadow .15s}
+.header-page-link:hover{background:#dcebd5;transform:translateY(-2px);box-shadow:0 5px 14px #37563b24}
+.header-page-link:focus-visible{outline:3px solid #ec9b69;outline-offset:3px}
+@media(max-width:760px){.header-actions{gap:0}.header-page-link{min-height:34px;padding:7px 10px;font-size:11px}}
