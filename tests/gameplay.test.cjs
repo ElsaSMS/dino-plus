@@ -8,7 +8,7 @@ const source = fs.readFileSync(path.join(__dirname, '..', 'game.js'), 'utf8');
 const startup = '  updateAudioControls(); updateProfileUI(); fillObstacles(); draw(); requestAnimationFrame(frame);';
 assert.ok(source.includes(startup), 'game test hook location changed');
 
-function createGame(randomValues = [], store = {}, trainingKinds = null, trainingMultiplier = 3.2) {
+function createGame(randomValues = [], store = {}, trainingKinds = null, trainingMultiplier = 3.2, overflowPreview = false) {
   const drawCalls = [];
   const canvasContext = new Proxy({}, {
     get: (_, key) => key === 'createLinearGradient' || key === 'createRadialGradient'
@@ -49,6 +49,7 @@ function createGame(randomValues = [], store = {}, trainingKinds = null, trainin
     Math: randomMath,
     document: documentMock,
     window: { addEventListener: (type, listener) => { windowListeners[type] = listener; },
+      ...(overflowPreview ? { DinoOverflowDemo: true } : {}),
       ...(trainingKinds ? { DinoTraining: { selectedKinds: () => trainingKinds,
         speedMultiplier: () => trainingMultiplier } } : {}) },
     localStorage: { getItem: (key) => store[key] ?? null, setItem: (key, value) => { store[key] = value; },
@@ -1934,6 +1935,7 @@ test('classic distance wraps as int32, explodes once, and reset discards the run
   assert.equal(game.mode(), 'overflow');
   assert.ok(Number(game.element('distance').textContent) < 0);
   assert.equal(Number(game.element('distance').textContent), Math.floor(game.worldPosition() / 10) | 0);
+  assert.equal(game.element('status-text').textContent, '极速 ×3.2', 'overflow does not announce itself');
   assert.equal(game.element('overflow-whiteout').hidden, false);
   assert.equal(explosions, 1);
   assert.equal(game.element('mode-reset').hidden, false);
@@ -1971,4 +1973,35 @@ test('classic wraps immediately after INT_MAX; training retains its ordinary cou
   training.tick(0);
   assert.equal(training.mode(), 'running');
   assert.equal(training.element('distance').textContent, '2147483648');
+});
+
+test('formal game covers the entire card and keeps demo instructions out of the page', () => {
+  const page = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  const footer = page.indexOf('class="game-footer"');
+  const whiteout = page.indexOf('id="overflow-whiteout"');
+  assert.ok(footer >= 0 && whiteout > footer, 'whiteout sits above the complete game card');
+  assert.equal(page.includes('计数溢出'), false);
+  assert.equal(page.includes('白屏后点击上方'), false);
+  assert.equal(page.includes('本页不会写入游戏纪录'), false);
+});
+
+test('local demo uses the real classic game from 2147483000m without hazards or record writes', () => {
+  const game = createGame([], {}, null, 3.2, true);
+  const recordBefore = game.store['elsasms.dino-plus.v1.profile'];
+  game.startGame();
+  assert.equal(game.mode(), 'running');
+  assert.equal(game.worldPosition(), 2147483000 * 10);
+  assert.equal(game.element('distance').textContent, '2147483000');
+  assert.equal(game.obstacles().length, 0);
+  assert.equal(game.nextPosition(), Infinity);
+  for (let frame = 0; frame < 250 && game.mode() === 'running'; frame++) game.tick(.032);
+  assert.equal(game.mode(), 'overflow');
+  assert.equal(game.element('overflow-whiteout').hidden, false);
+  assert.equal(game.store['elsasms.dino-plus.v1.profile'], recordBefore);
+  game.element('mode-reset').click();
+  assert.equal(game.mode(), 'ready');
+  assert.equal(game.worldPosition(), 0);
+  assert.equal(game.element('distance').textContent, '0000');
+  game.startGame();
+  assert.equal(game.worldPosition(), 2147483000 * 10);
 });

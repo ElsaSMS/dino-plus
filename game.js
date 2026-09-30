@@ -20,6 +20,7 @@
   const EXTREME_SPEED = BASE_SPEED * 3.6;
   const EXTREME_DISTANCE = 100000 * 10; // Displayed meters -> world units.
   const CLASSIC_INT_MAX = 2147483647;
+  const OVERFLOW_DEMO_START = 2147483000 * 10;
   const DOUBLE_SPEED_DISTANCE = 10000;
   const TRIPLE_SPEED_DISTANCE = 100000;
   const MAX_SPEED_DISTANCE = 120000;
@@ -41,6 +42,7 @@
   const SHIELD_PICKUP_RADIUS = 19;
   const JETPACK_DISTANCE = 8000; // World units: 10 pixels of travel per displayed meter.
   const trainingMode = Boolean(window.DinoTraining);
+  const overflowDemo = window.DinoOverflowDemo === true;
   const { RAINBOW, birdStyles, thornPalettes, outfits,
     highBirdWingPoints, outlinePoints, thornModules } = window.DinoModels;
   const highBirdWingTip = (o) => window.DinoModels.highBirdWingTip(o, elapsed);
@@ -218,7 +220,9 @@
   }
   function setMode(next) {
     mode = next;
-    ui.status.textContent = ({ ready: '准备出发', running: '正在冒险', paused: '已暂停', over: '本轮结束', overflow: '计数溢出' })[mode];
+    if (mode !== 'overflow') {
+      ui.status.textContent = ({ ready: '准备出发', running: '正在冒险', paused: '已暂停', over: '本轮结束' })[mode];
+    }
     ui.pill.dataset.mode = mode;
     ui.pauseButton.disabled = mode === 'ready' || mode === 'over' || mode === 'overflow';
     ui.pauseButton.textContent = mode === 'paused' ? '继续' : '暂停';
@@ -249,7 +253,16 @@
   }
   function startGame() {
     if (mode === 'paused') { setMode('running'); hideOverlay(); sound.resume(); return; }
-    resetGame(); setMode('running'); hideOverlay(); sound.start();
+    resetGame();
+    if (overflowDemo && !trainingMode && !extremeMode) {
+      worldX = OVERFLOW_DEMO_START;
+      speed = runSpeedAt(worldX);
+      obstacles = []; shieldPickups = []; jetpackPickups = [];
+      nextObstacleX = Infinity;
+      recordCelebrated = true;
+      ui.distance.textContent = String(score());
+    }
+    setMode('running'); hideOverlay(); sound.start();
   }
   function pauseGame() {
     if (mode === 'running') {
@@ -271,7 +284,7 @@
     if (fromGround) player.feetY = Math.min(player.feetY, GROUND - 1);
   }
   function pressDown() {
-    if (mode === 'paused' || mode === 'over' || jetpackActive) return;
+    if (mode === 'paused' || mode === 'over' || mode === 'overflow' || jetpackActive) return;
     if (player.grounded) { player.crouch = true; return; }
     player.diving = true;
     player.vy = Math.max(player.vy, 0);
@@ -302,7 +315,7 @@
     ui.whiteout.hidden = false;
     modeReset.hidden = false;
     modeReset.disabled = false;
-    modeReset.title = '清除白屏，从 0 米重新开始';
+    modeReset.title = '将本轮进度归零';
   }
   function finishExtreme() {
     if (!extremeMode || mode !== 'running' || worldX < EXTREME_DISTANCE) return;
@@ -987,7 +1000,7 @@
       : '迎着晚霞出发，刷新属于你的最远纪录。';
     modeReset.hidden = !extremeMode;
     modeReset.disabled = !extremeMode;
-    modeReset.title = extremeMode ? '将进度和续命次数归零，暂停在起点' : '清除白屏，从 0 米重新开始';
+    modeReset.title = extremeMode ? '将进度和续命次数归零，暂停在起点' : '将本轮进度归零';
     resetGame(); setMode('ready');
     showReadyOverlay();
     updateProfileUI();
