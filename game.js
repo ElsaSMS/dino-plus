@@ -72,7 +72,7 @@
   };
   const achievements = (!overflowDemo && window.DinoAchievements) || {
     startRun: noSound, record: noSound, finishRun: noSound,
-    noteNickname: noSound, noteOutfit: noSound
+    noteNameSaved: noSound
   };
   function updateAudioControls() {
     const { muted, musicVolume, effectsVolume } = sound.settings();
@@ -117,7 +117,6 @@
   if (writeStore(PROFILE_KEY, profile) && legacyProfiles !== null) {
     try { localStorage.removeItem(LEGACY_PROFILES_KEY); } catch { /* Keep the legacy backup if storage is read-only. */ }
   }
-  achievements.noteOutfit(profile.outfit);
   let mode = 'ready';
   let worldX = 0;
   let speed = BASE_SPEED;
@@ -274,7 +273,7 @@
     if (mode === 'paused') {
       if (!achievementRunMode) {
         achievementRunMode = trainingMode ? 'training' : extremeMode ? 'extreme' : 'classic';
-        achievements.startRun(achievementRunMode);
+        achievements.startRun(achievementRunMode, profile.outfit);
       }
       setMode('running'); hideOverlay(); sound.resume(); return;
     }
@@ -288,7 +287,7 @@
       ui.distance.textContent = String(score());
     }
     achievementRunMode = trainingMode ? 'training' : extremeMode ? 'extreme' : 'classic';
-    achievements.startRun(achievementRunMode);
+    achievements.startRun(achievementRunMode, profile.outfit);
     setMode('running'); hideOverlay(); sound.start();
   }
   function pauseGame() {
@@ -1199,7 +1198,7 @@
     if (!name) { ui.nameHint.textContent = '请先输入一个昵称。'; ui.name.focus(); return; }
     activeName = name;
     const saved = writeStore(ACTIVE_KEY, activeName);
-    achievements.noteNickname(activeName);
+    achievements.noteNameSaved();
     ui.nameHint.textContent = saved ? `已更名为 ${name}，纪录和装扮保留。` : '昵称暂时无法保存，请检查浏览器存储设置。';
     updateProfileUI();
   });
@@ -1208,7 +1207,6 @@
     const button = e.target.closest('[data-outfit]');
     if (!button || !outfits[button.dataset.outfit]) return;
     profile.outfit = button.dataset.outfit; writeStore(PROFILE_KEY, profile); updateProfileUI();
-    achievements.noteOutfit(profile.outfit);
   });
   ui.startButton.addEventListener('click', startGame);
   ui.pauseButton.addEventListener('click', () => { pauseGame(); ui.pauseButton.blur(); });

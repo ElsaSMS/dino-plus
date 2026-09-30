@@ -37,21 +37,21 @@ test('catalogue has all 31 named badges and every image resolves', () => {
   }
 });
 
-test('training and outfit awards settle once, survive reload, and notify subscribers', () => {
+test('training settles at run end; saved name and two started outfits unlock immediately', () => {
   const store = {};
   const { api } = load(store);
   let notifications = 0;
   const unsubscribe = api.subscribe(() => notifications++);
-  api.noteNickname('小恐龙');
-  api.noteOutfit('explorer');
-  api.noteOutfit('stargazer');
-  api.startRun('training');
+  api.noteNameSaved();
+  api.startRun('training', 'explorer');
   assert.equal(award(api, 'outfit', 'wood').unlocked, false);
   assert.equal(award(api, 'training', 'wood').unlocked, false);
   api.finishRun({ distance: 200 });
-  assert.equal(award(api, 'outfit', 'wood').unlocked, true);
   assert.equal(award(api, 'training', 'wood').unlocked, true);
-  assert.ok(notifications >= 5);
+  assert.equal(award(api, 'outfit', 'wood').unlocked, false);
+  api.startRun('classic', 'stargazer');
+  assert.equal(award(api, 'outfit', 'wood').unlocked, true);
+  assert.ok(notifications >= 4);
   unsubscribe();
   const previous = notifications;
   api.startRun('classic');
@@ -61,16 +61,18 @@ test('training and outfit awards settle once, survive reload, and notify subscri
   assert.equal(award(restored, 'outfit', 'wood').unlocked, true);
 });
 
-test('existing browser nickname and current outfit contribute to future outfit progress', () => {
+test('a stored nickname and selected outfit do not stand in for save and game starts', () => {
   const store = {
     'elsasms.dino-plus.v1.active-name': JSON.stringify('晚霞旅人'),
     'elsasms.dino-plus.v1.profile': JSON.stringify({ outfit: 'sunrider' })
   };
   const { api } = load(store);
-  assert.equal(award(api, 'outfit', 'wood').progress, '1/2');
-  api.noteOutfit('minty');
-  api.startRun('classic');
+  assert.equal(award(api, 'outfit', 'wood').progress, '0/2');
+  api.startRun('classic', 'sunrider');
   api.finishRun({ distance: 200 });
+  api.startRun('classic', 'minty');
+  assert.equal(award(api, 'outfit', 'wood').progress, '1/2');
+  api.noteNameSaved();
   assert.equal(award(api, 'outfit', 'wood').unlocked, true);
 });
 
@@ -86,15 +88,46 @@ test('earlier personal records seed the achievement progress that can be reconst
   assert.equal(award(api, 'extreme', 'hidden').unlocked, false);
 });
 
-test('the default nickname does not count as choosing a name', () => {
+test('saving the default nickname counts, but repeated runs in one outfit do not', () => {
   const { api } = load();
-  api.noteNickname('小小冒险家');
-  api.noteOutfit('explorer');
-  api.noteOutfit('minty');
-  api.startRun('classic');
+  api.noteNameSaved();
+  api.startRun('classic', 'explorer');
   api.finishRun({ distance: 50 });
+  api.startRun('classic', 'explorer');
   assert.equal(award(api, 'outfit', 'wood').progress, '1/2');
   assert.equal(award(api, 'outfit', 'wood').unlocked, false);
+  api.startRun('classic', 'minty');
+  assert.equal(award(api, 'outfit', 'wood').unlocked, true);
+});
+
+test('a saved name and first started outfit survive a page reload', () => {
+  const store = {};
+  const first = load(store).api;
+  first.noteNameSaved();
+  first.startRun('classic', 'explorer');
+  assert.equal(award(first, 'outfit', 'wood').progress, '1/2');
+  const restored = load(store).api;
+  assert.equal(award(restored, 'outfit', 'wood').progress, '1/2');
+  restored.startRun('extreme', 'sunrider');
+  assert.equal(award(restored, 'outfit', 'wood').unlocked, true);
+});
+
+test('version-one outfit selections and badge cannot prove the clarified rule', () => {
+  const store = { [KEY]: JSON.stringify({
+    version: 1, nicknameSet: true, outfits: ['explorer', 'sunrider'],
+    classic: { best: 10000, total: 10000 },
+    unlocked: { 'outfit.wood': true, 'classic.bronze': true }
+  }) };
+  const { api } = load(store);
+  assert.equal(award(api, 'outfit', 'wood').unlocked, false);
+  assert.equal(award(api, 'outfit', 'wood').progress, '0/2');
+  assert.equal(award(api, 'classic', 'bronze').unlocked, true);
+  api.noteNameSaved();
+  api.startRun('classic', 'explorer');
+  assert.equal(award(api, 'outfit', 'wood').unlocked, false);
+  api.startRun('classic', 'sunrider');
+  assert.equal(award(api, 'outfit', 'wood').unlocked, true);
+  assert.equal(JSON.parse(store[KEY]).version, 2);
 });
 
 test('a catalogue tab refreshes progress saved by another game tab', () => {

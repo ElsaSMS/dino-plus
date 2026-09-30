@@ -25,7 +25,7 @@
       ['wood', '木', 'wood.svg', '使用一次训练营']
     ] },
     { id: 'outfit', name: '自有风姿', category: '逐光之路', badges: [
-      ['wood', '木', 'wood-outfit.svg', '设置昵称并尝试至少两款装扮']
+      ['wood', '木', 'wood-outfit.svg', '点击昵称保存，并分别穿着至少两款装扮开始游戏']
     ] },
     { id: 'thorn', name: '一跃凌棘', category: '身法入微', badges: [
       ['bronze', '铜', 'bronze-thorn.svg', '任意模式中单跳越过一次高荆棘'],
@@ -70,12 +70,12 @@
 
   // Keep the saved format small and tolerant of older or corrupt browser storage.
   const freshState = () => ({
-    version: 1,
+    version: 2,
     classic: { best: 0, total: 0 },
     extreme: { completions: 0, bestRescues: null },
     trainingUsed: false,
-    nicknameSet: false,
-    outfits: [],
+    nameSaved: false,
+    outfitsStarted: [],
     thorn: { total: 0, bestClassicRun: 0 },
     bird: { total: 0, smallSingle: false },
     air: { any: false, high: false, twoHigh: false },
@@ -85,17 +85,9 @@
   });
   const whole = (value) => Number.isFinite(value) && value >= 0 ? Math.floor(value) : 0;
   const boolean = (value) => value === true;
-  function existingProfileChoices(state) {
-    try {
-      const name = JSON.parse(global.localStorage?.getItem('elsasms.dino-plus.v1.active-name') || 'null');
-      if (typeof name === 'string' && name.trim() && name !== '小小冒险家') state.nicknameSet = true;
-    } catch { /* Ignore an unreadable earlier nickname. */ }
+  function existingProfileRecords(state) {
     try {
       const profile = JSON.parse(global.localStorage?.getItem('elsasms.dino-plus.v1.profile') || 'null');
-      const outfit = profile?.outfit;
-      if (typeof outfit === 'string' && outfit.length < 40 && !state.outfits.includes(outfit)) {
-        state.outfits.push(outfit);
-      }
       const priorBest = whole(profile?.best);
       state.classic.best = Math.max(state.classic.best, priorBest);
       state.classic.total = Math.max(state.classic.total, priorBest);
@@ -105,7 +97,7 @@
         state.extreme.bestRescues = state.extreme.bestRescues === null
           ? priorRescues : Math.min(state.extreme.bestRescues, priorRescues);
       }
-    } catch { /* Ignore an unreadable earlier outfit. */ }
+    } catch { /* Ignore an unreadable earlier profile. */ }
     if (state.classic.best >= 10000) state.unlocked['classic.bronze'] = true;
     if (state.classic.best >= 50000) state.unlocked['classic.silver'] = true;
     if (state.classic.total >= 1000000) state.unlocked['classic.gold'] = true;
@@ -119,7 +111,7 @@
     try { saved = JSON.parse(global.localStorage?.getItem(KEY) || 'null'); } catch { /* Private browsing or invalid JSON. */ }
     const state = freshState();
     if (!saved || typeof saved !== 'object') {
-      existingProfileChoices(state);
+      existingProfileRecords(state);
       return state;
     }
     state.classic.best = whole(saved.classic?.best);
@@ -128,9 +120,12 @@
     state.extreme.bestRescues = Number.isFinite(saved.extreme?.bestRescues) && saved.extreme.bestRescues >= 0
       ? whole(saved.extreme.bestRescues) : null;
     state.trainingUsed = boolean(saved.trainingUsed);
-    state.nicknameSet = boolean(saved.nicknameSet);
-    state.outfits = Array.isArray(saved.outfits)
-      ? [...new Set(saved.outfits.filter((id) => typeof id === 'string' && id.length < 40))].slice(0, 20) : [];
+    // Version 1 counted skin selections and inferred a name save from storage;
+    // neither proves the two actions required by the current outfit badge.
+    const preciseOutfitProgress = Number.isInteger(saved.version) && saved.version >= 2;
+    state.nameSaved = preciseOutfitProgress && boolean(saved.nameSaved);
+    state.outfitsStarted = preciseOutfitProgress && Array.isArray(saved.outfitsStarted)
+      ? [...new Set(saved.outfitsStarted.filter((id) => typeof id === 'string' && id.length < 40))].slice(0, 20) : [];
     state.thorn.total = whole(saved.thorn?.total);
     state.thorn.bestClassicRun = whole(saved.thorn?.bestClassicRun);
     state.bird.total = whole(saved.bird?.total);
@@ -145,10 +140,12 @@
     if (saved.unlocked && typeof saved.unlocked === 'object') {
       for (const group of groups) for (const [tier] of group.badges) {
         const key = `${group.id}.${tier}`;
+        if (group.id === 'outfit' && !preciseOutfitProgress) continue;
         if (saved.unlocked[key] === true) state.unlocked[key] = true;
       }
     }
-    existingProfileChoices(state);
+    if (!state.nameSaved || state.outfitsStarted.length < 2) delete state.unlocked['outfit.wood'];
+    existingProfileRecords(state);
     return state;
   }
   let state = readState();
@@ -174,9 +171,14 @@
       warningStreak: 0, lastPickup: null, overflow: false
     };
   }
-  function startRun(mode) {
+  function startRun(mode, outfitId) {
     if (!['classic', 'extreme', 'training'].includes(mode)) return;
+    state = readState();
     run = newRun(mode);
+    if (typeof outfitId === 'string' && outfitId.trim() && outfitId.length < 40
+      && !state.outfitsStarted.includes(outfitId)) state.outfitsStarted.push(outfitId);
+    award('outfit', [state.nameSaved && state.outfitsStarted.length >= 2]);
+    save();
     notify();
   }
   function record(type, payload = {}) {
@@ -239,14 +241,11 @@
     }
     notify();
   }
-  function noteNickname(name) {
-    if (typeof name !== 'string' || !name.trim() || name.trim() === '小小冒险家' || state.nicknameSet) return;
-    state.nicknameSet = true;
-    save(); notify();
-  }
-  function noteOutfit(id) {
-    if (typeof id !== 'string' || !id.trim() || id.length >= 40 || state.outfits.includes(id)) return;
-    state.outfits.push(id);
+  function noteNameSaved() {
+    state = readState();
+    if (state.nameSaved) return;
+    state.nameSaved = true;
+    award('outfit', [state.outfitsStarted.length >= 2]);
     save(); notify();
   }
   function award(groupId, candidates) {
@@ -301,7 +300,7 @@
       state.extreme.bestRescues !== null && state.extreme.bestRescues <= 15,
       extremeCompleted && whole(rescues) === 0]);
     award('training', [state.trainingUsed]);
-    award('outfit', [state.nicknameSet && state.outfits.length >= 2]);
+    award('outfit', [state.nameSaved && state.outfitsStarted.length >= 2]);
     award('thorn', [state.thorn.total >= 1, state.thorn.bestClassicRun >= 3,
       state.thorn.total >= 100,
       extremeCompleted && run.thornSeen > 0 && run.thornSingle === run.thornSeen]);
@@ -334,7 +333,7 @@
         state.extreme.bestRescues === null ? '最佳续命：尚未完赛' : `最佳续命：${state.extreme.bestRescues} 次`,
         state.extreme.bestRescues === null ? '最佳续命：尚未完赛' : `最佳续命：${state.extreme.bestRescues} 次`],
       training: [capped(state.trainingUsed || pending?.mode === 'training' ? 1 : 0, 1)],
-      outfit: [`${(state.nicknameSet ? 1 : 0) + (state.outfits.length >= 2 ? 1 : 0)}/2`],
+      outfit: [`${(state.nameSaved ? 1 : 0) + (state.outfitsStarted.length >= 2 ? 1 : 0)}/2`],
       thorn: [capped(liveThorn, 1), capped(Math.max(state.thorn.bestClassicRun,
         pending?.mode === 'classic' ? pending.thornSingle : 0), 3), capped(liveThorn, 100)],
       bird: [capped(liveBird, 1), capped(liveBird, 50), capped(state.bird.smallSingle || pending?.birdSmallSingle ? 1 : 0, 1)],
@@ -372,5 +371,5 @@
     notify();
     return getView();
   }
-  global.DinoAchievements = { startRun, record, finishRun, noteNickname, noteOutfit, getView, subscribe, refresh };
+  global.DinoAchievements = { startRun, record, finishRun, noteNameSaved, getView, subscribe, refresh };
 })(typeof window !== 'undefined' ? window : globalThis);

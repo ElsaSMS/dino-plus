@@ -28,7 +28,7 @@ function createGame(randomValues = [], store = {}, trainingKinds = null, trainin
       const listeners = {};
       const node = { ...element, value: '', textContent: '', hidden: false, dataset: {},
         addEventListener(type, callback) { listeners[type] = callback; },
-        click() { listeners.click?.({ target: node }); },
+        click(event = { target: node }) { listeners.click?.(event); },
         blur() { documentMock.activeElement = { tagName: 'BODY' }; }
       };
       elements.set(id, node);
@@ -2060,6 +2060,34 @@ test('extreme reset starts a fresh achievement run when resumed from 0m', () => 
   assert.equal(game.mode(), 'over');
   assert.equal(award[0].unlocked, true);
   assert.equal(award[3].unlocked, true);
+});
+
+test('outfit badge needs a name save and two distinct outfits at actual game starts', () => {
+  const store = {};
+  const game = createGame([], store, null, 3.2, false, true);
+  const outfitAward = () => game.achievements.getView().groups
+    .find((group) => group.id === 'outfit').awards[0];
+  const choose = (id) => game.element('outfit-grid').click({
+    target: { closest: () => ({ dataset: { outfit: id } }) }
+  });
+  game.element('name-input').value = '小小冒险家';
+  game.element('save-name').click();
+  choose('stargazer');
+  choose('explorer');
+  assert.equal(outfitAward().progress, '1/2');
+  assert.equal(outfitAward().unlocked, false, 'selecting a skin alone does not count');
+  game.startGame();
+  assert.equal(outfitAward().unlocked, false);
+  game.element('pause-button').click();
+  choose('stargazer');
+  game.startGame();
+  assert.equal(outfitAward().unlocked, false, 'resuming is not another game start');
+  game.endGame();
+  game.startGame();
+  assert.equal(outfitAward().unlocked, true, 'the second skin counts as soon as its run starts');
+  const restored = createGame([], store, null, 3.2, false, true);
+  assert.equal(restored.achievements.getView().groups.find((group) => group.id === 'outfit')
+    .awards[0].unlocked, true);
 });
 
 test('clearing high thorns and high birds in one airtime credits the real game events', () => {
