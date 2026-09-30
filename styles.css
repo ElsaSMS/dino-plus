@@ -58,3 +58,11 @@ body.game-expanded .sidebar{display:none}
 .header-page-link:hover{background:#dcebd5;transform:translateY(-2px);box-shadow:0 5px 14px #37563b24}
 .header-page-link:focus-visible{outline:3px solid #ec9b69;outline-offset:3px}
 @media(max-width:760px){.header-actions{gap:0}.header-page-link{min-height:34px;padding:7px 10px;font-size:11px}}
+
+.overflow-whiteout[hidden]{display:none}
+.overflow-whiteout{position:absolute;z-index:10;inset:0;overflow:hidden;pointer-events:none;animation:overflow-white-screen .9s ease-out forwards}
+.overflow-whiteout::before{content:'';position:absolute;left:18.5%;top:64%;width:160px;height:160px;border-radius:50%;background:radial-gradient(circle,#fff 0 12%,#fff7c9 24%,#ffba72 42%,#e68d73 58%,#ffffff00 72%);box-shadow:0 0 35px 16px #fff3a9;animation:overflow-flash .68s ease-out both}
+.overflow-whiteout::after{content:'';position:absolute;left:18.5%;top:64%;width:108px;height:108px;border:10px solid #fff8d2;border-radius:50%;box-shadow:0 0 0 14px #efac774f,0 0 40px 18px #fff2ba;animation:overflow-shockwave .7s ease-out both}
+@keyframes overflow-white-screen{0%,18%{background:#ffffff00}48%{background:#fff8e6b8}100%{background:#fff}}
+@keyframes overflow-flash{0%{opacity:0;transform:translate(-50%,-50%) scale(.08)}12%{opacity:1}100%{opacity:0;transform:translate(-50%,-50%) scale(8)}}
+@keyframes overflow-shockwave{0%{opacity:0;transform:translate(-50%,-50%) scale(.1)}18%{opacity:1}100%{opacity:0;transform:translate(-50%,-50%) scale(10)}}

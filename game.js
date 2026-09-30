@@ -19,6 +19,7 @@
   const MAX_SPEED = BASE_SPEED * 3.2;
   const EXTREME_SPEED = BASE_SPEED * 3.6;
   const EXTREME_DISTANCE = 100000 * 10; // Displayed meters -> world units.
+  const CLASSIC_INT_MAX = 2147483647;
   const DOUBLE_SPEED_DISTANCE = 10000;
   const TRIPLE_SPEED_DISTANCE = 100000;
   const MAX_SPEED_DISTANCE = 120000;
@@ -55,7 +56,7 @@
     extremeBest: $('extreme-best'), extremeRecent: $('extreme-recent'),
     profileBest: $('profile-best'), recordNote: $('record-note'), recent: $('recent-list'),
     name: $('name-input'), nameHint: $('name-hint'), outfitGrid: $('outfit-grid'),
-    warning: $('hazard-warning'), audioToggle: $('audio-toggle'),
+    warning: $('hazard-warning'), whiteout: $('overflow-whiteout'), audioToggle: $('audio-toggle'),
     musicVolume: $('music-volume'), effectsVolume: $('effects-volume')
   };
   const noSound = () => {};
@@ -217,9 +218,9 @@
   }
   function setMode(next) {
     mode = next;
-    ui.status.textContent = ({ ready: '准备出发', running: '正在冒险', paused: '已暂停', over: '本轮结束' })[mode];
+    ui.status.textContent = ({ ready: '准备出发', running: '正在冒险', paused: '已暂停', over: '本轮结束', overflow: '计数溢出' })[mode];
     ui.pill.dataset.mode = mode;
-    ui.pauseButton.disabled = mode === 'ready' || mode === 'over';
+    ui.pauseButton.disabled = mode === 'ready' || mode === 'over' || mode === 'overflow';
     ui.pauseButton.textContent = mode === 'paused' ? '继续' : '暂停';
     if (mode !== 'running') ui.warning.hidden = true;
   }
@@ -240,6 +241,8 @@
     shieldDebris = [];
     downKeys.clear(); touchDownHeld = false;
     ui.warning.hidden = true;
+    if (ui.whiteout) ui.whiteout.hidden = true;
+    if (!extremeMode) { modeReset.hidden = true; modeReset.disabled = true; }
     player = { feetY: GROUND, vy: 0, jumps: 0, crouch: false, grounded: true, diving: false };
     ui.distance.textContent = '0000';
     fillObstacles();
@@ -288,6 +291,18 @@
       updateProfileUI();
       showOverlay(isRecord ? 'NEW PERSONAL BEST!' : 'THE RUN IS OVER', isRecord ? '新纪录，太精彩了！' : '别停，再跑一次！', `这次跑了 ${finalScore} 米。${isRecord ? '你的新纪录已保存。' : '再试试突破个人最佳。'}`, '再来一次');
     }
+  }
+  function triggerClassicOverflow() {
+    if (trainingMode || extremeMode || mode !== 'running') return;
+    // The world position stays precise; only the classic distance counter uses signed 32-bit arithmetic.
+    ui.distance.textContent = String(score() | 0);
+    setMode('overflow');
+    sound.ready();
+    sound.explosion();
+    ui.whiteout.hidden = false;
+    modeReset.hidden = false;
+    modeReset.disabled = false;
+    modeReset.title = '清除白屏，从 0 米重新开始';
   }
   function finishExtreme() {
     if (!extremeMode || mode !== 'running' || worldX < EXTREME_DISTANCE) return;
@@ -841,6 +856,7 @@
     }) || null;
   }
   function update(dt) {
+    if (mode === 'overflow') return;
     if (extremeMode && mode !== 'running') return;
     speed = runSpeedAt(worldX);
     sound.setIntensity(Math.min(1, Math.max(0, (speed / BASE_SPEED - 1) / 2)));
@@ -848,6 +864,10 @@
     if (extremeMode) dt = Math.min(dt, Math.max(0, EXTREME_DISTANCE - worldX) / speed);
     elapsed += dt;
     worldX += speed * dt;
+    if (!trainingMode && !extremeMode && score() > CLASSIC_INT_MAX) {
+      triggerClassicOverflow();
+      return;
+    }
     const speedLabel = trainingMode ? '训练' : extremeMode ? '极限' : speed >= MAX_SPEED ? '极速' : '速度';
     const speedText = jetpackActive
       ? `喷气飞行 · ${Math.max(0, Math.ceil((JETPACK_DISTANCE - worldX + jetpackStartX) / 10))} 米`
@@ -967,6 +987,7 @@
       : '迎着晚霞出发，刷新属于你的最远纪录。';
     modeReset.hidden = !extremeMode;
     modeReset.disabled = !extremeMode;
+    modeReset.title = extremeMode ? '将进度和续命次数归零，暂停在起点' : '清除白屏，从 0 米重新开始';
     resetGame(); setMode('ready');
     showReadyOverlay();
     updateProfileUI();
@@ -974,7 +995,12 @@
   classicButton.addEventListener('click', () => selectGameMode(false));
   extremeButton.addEventListener('click', () => selectGameMode(true));
   modeReset.addEventListener('click', () => {
-    if (!extremeMode) return;
+    if (!extremeMode) {
+      if (mode !== 'overflow') return;
+      resetGame(); setMode('ready'); showReadyOverlay(); updateProfileUI();
+      modeReset.blur();
+      return;
+    }
     resetGame(); setMode('paused');
     showOverlay('EXTREME RESET', '已回到 0 米', '准备好了再继续挑战。', '继续极限挑战');
     modeReset.blur();
@@ -1022,6 +1048,10 @@
         e.preventDefault();
         if (!e.repeat) startGame();
       }
+      return;
+    }
+    if (mode === 'overflow') {
+      if (e.code === 'Space' || e.code === 'ArrowDown') e.preventDefault();
       return;
     }
     if (isControl(e.target) || isControl(document.activeElement)) return;

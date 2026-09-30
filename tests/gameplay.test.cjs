@@ -55,7 +55,7 @@ function createGame(randomValues = [], store = {}, trainingKinds = null, trainin
       removeItem: (key) => { delete store[key]; } }
   };
   const hook = `  globalThis.gameTest = {
-    powerupMultiplier, movingBirdSpeed, triggerBlast,
+    sound, powerupMultiplier, movingBirdSpeed, triggerBlast,
     powerupEpoch: () => powerupEpochX,
     setPowerupDistance: (meters) => { powerupEpochX = worldX - meters * 10; },
     speedAt, runSpeedAt, runPressure, latePressure, obstacleKind, trainingObstacleKind, obstacleWidth, cliffNeighborKind, makeObstacle, thornModules,
@@ -1913,4 +1913,62 @@ test('rebalance: A and C have exactly 6% high thorns on either side, never both'
   assert.equal(game.makeObstacle('tallThorn', 0, 84).height, 123);
   assert.equal(game.sceneTallThornSide(.06), 'after');
   assert.equal(game.sceneTallThornSide(.12), null);
+});
+
+test('classic distance wraps as int32, explodes once, and reset discards the run', () => {
+  const key = 'elsasms.dino-plus.v1.profile';
+  const store = { [key]: JSON.stringify({ best: 500, recent: [500], outfit: 'explorer' }) };
+  const game = createGame([], store);
+  let explosions = 0;
+  game.sound.explosion = () => { explosions++; };
+  game.startGame();
+  game.setObstacles([]); game.next(Infinity);
+  const originalRecord = store[key];
+  assert.equal(game.element('mode-reset').hidden, true);
+
+  // Start 647 meters below the signed 32-bit limit instead of running billions of meters.
+  game.player(2147483000 * 10, 320, false);
+  game.tick(0);
+  assert.equal(game.element('distance').textContent, '2147483000');
+  for (let frame = 0; frame < 250 && game.mode() === 'running'; frame++) game.tick(.032);
+  assert.equal(game.mode(), 'overflow');
+  assert.ok(Number(game.element('distance').textContent) < 0);
+  assert.equal(Number(game.element('distance').textContent), Math.floor(game.worldPosition() / 10) | 0);
+  assert.equal(game.element('overflow-whiteout').hidden, false);
+  assert.equal(explosions, 1);
+  assert.equal(game.element('mode-reset').hidden, false);
+  assert.equal(game.element('mode-reset').disabled, false);
+  const stoppedAt = game.worldPosition();
+  game.tick(.032); game.endGame();
+  assert.equal(explosions, 1);
+  assert.equal(game.worldPosition(), stoppedAt);
+  assert.equal(game.keyDown('Space').defaultPrevented, true);
+  assert.equal(game.mode(), 'overflow');
+  assert.equal(store[key], originalRecord, 'the overflowed run never becomes a record');
+
+  game.element('mode-reset').click();
+  assert.equal(game.mode(), 'ready');
+  assert.equal(game.worldPosition(), 0);
+  assert.equal(game.element('distance').textContent, '0000');
+  assert.equal(game.element('overflow-whiteout').hidden, true);
+  assert.equal(game.element('mode-reset').hidden, true);
+  assert.equal(store[key], originalRecord);
+});
+
+test('classic wraps immediately after INT_MAX; training retains its ordinary counter', () => {
+  const classic = createGame();
+  classic.startGame(); classic.setObstacles([]); classic.next(Infinity);
+  classic.player(2147483647 * 10, 320, false);
+  classic.tick(0);
+  assert.equal(classic.element('distance').textContent, '2147483647');
+  classic.tick(.01);
+  assert.equal(classic.element('distance').textContent, '-2147483648');
+  assert.equal(classic.mode(), 'overflow');
+
+  const training = createGame([], {}, ['cactus']);
+  training.startForInputTest();
+  training.player(2147483648 * 10, 320, false);
+  training.tick(0);
+  assert.equal(training.mode(), 'running');
+  assert.equal(training.element('distance').textContent, '2147483648');
 });
