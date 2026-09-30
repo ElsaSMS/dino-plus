@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="112" height="112" viewBox="0 0 112 112" role="img" aria-labelledby="crystal-title crystal-desc">
+  <title id="crystal-title">三响从容 · 水晶徽章</title>
+  <desc id="crystal-desc">紫蓝色晶簇镶嵌在棱面徽章中，中央闪耀幸运星，铭牌写着三响从容。</desc>
+  <defs>
+    <linearGradient id="crystal-rim" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#e5dbff"/><stop offset=".35" stop-color="#8d71bb"/><stop offset=".7" stop-color="#4a558d"/><stop offset="1" stop-color="#c9f2fa"/>
+    </linearGradient>
+    <linearGradient id="crystal-face" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#b9eef6"/><stop offset=".48" stop-color="#8f9ad4"/><stop offset="1" stop-color="#604f9c"/>
+    </linearGradient>
+  </defs>
+  <path d="M56 3 67 9 78 5 87 16 99 21 100 33 108 44 103 56 108 68 100 79 99 91 87 96 78 107 67 103 56 109 45 103 34 107 25 96 13 91 12 79 4 68 9 56 4 44 12 33 13 21 25 16 34 5 45 9Z" fill="#494779"/>
+  <circle cx="56" cy="55" r="46" fill="url(#crystal-rim)" stroke="#e5faff" stroke-width="2"/>
+  <circle cx="56" cy="55" r="40" fill="#535a91" stroke="#d4f7ff" stroke-width="1.5"/>
+  <circle cx="56" cy="55" r="35" fill="url(#crystal-face)" stroke="#f0ffff" stroke-width="1"/>
+  <path d="M21 50 40 26 56 19 73 28 91 50 83 76 56 90 29 76Z" fill="none" stroke="#e4faff" stroke-width="1.5" opacity=".55"/>
+  <path d="M40 26 48 49 29 76M73 28 64 49 83 76M56 19 56 84M21 50 48 49 64 49 91 50M29 76 56 84 83 76" fill="none" stroke="#e3fbff" stroke-width="1.5" opacity=".45"/>
+  <path d="M56 30 62 45 78 51 62 57 56 74 50 57 34 51 50 45Z" fill="#f6ffff" stroke="#9dddec" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M56 36v31M40 51h32" fill="none" stroke="#baeaf7" stroke-width="1.5"/>
+  <g fill="#f7ffff"><circle cx="56" cy="11" r="2"/><circle cx="97" cy="55" r="2"/><circle cx="56" cy="99" r="2"/><circle cx="15" cy="55" r="2"/></g>
+  <path d="m84 18 2 5 5 2-5 2-2 5-2-5-5-2 5-2ZM22 81l1.5 3.5L27 86l-3.5 1.5L22 91l-1.5-3.5L17 86l3.5-1.5Z" fill="#e7fbff"/>
+  <path d="M16 77 25 73h62l9 4-5 17-35 7-35-7Z" fill="#363d77" stroke="#dcfaff" stroke-width="1.8" stroke-linejoin="round"/>
+  <path d="M23 79h66l-3 12-30 6-30-6Z" fill="#5663a3" stroke="#9ce7f3" stroke-width="1" stroke-linejoin="round"/>
+  <path d="M28 81h56" stroke="#e7ffff" stroke-width=".9" opacity=".8"/>
+  <text id="achievement-name" x="56" y="91" text-anchor="middle" font-family="Microsoft YaHei, PingFang SC, Noto Sans CJK SC, sans-serif" font-size="12" font-weight="800" letter-spacing=".6" fill="#f8ffff" stroke="#333a70" stroke-width=".7" paint-order="stroke fill">三响从容</text>
+</svg>

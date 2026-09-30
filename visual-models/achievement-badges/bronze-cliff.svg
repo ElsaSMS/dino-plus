@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="112" height="112" viewBox="0 0 112 112" role="img" aria-labelledby="bronze-title bronze-desc">
+  <title id="bronze-title">绝壑回身 · 铜徽章</title>
+  <desc id="bronze-desc">赤铜战盾、展翼与三尖冠组成的纹章，底部铭牌写着绝壑回身。</desc>
+  <defs>
+    <linearGradient id="bronze-wing" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#ffe2ab"/><stop offset=".24" stop-color="#c67b49"/><stop offset=".58" stop-color="#743b31"/><stop offset="1" stop-color="#eaa56a"/>
+    </linearGradient>
+    <linearGradient id="bronze-frame" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#ffe5af"/><stop offset=".32" stop-color="#cf8751"/><stop offset=".72" stop-color="#69392f"/><stop offset="1" stop-color="#f2b77b"/>
+    </linearGradient>
+    <linearGradient id="bronze-face" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#a35c40"/><stop offset=".42" stop-color="#653e37"/><stop offset="1" stop-color="#302f36"/>
+    </linearGradient>
+    <linearGradient id="bronze-blade" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#fff1c5"/><stop offset=".47" stop-color="#e6a96f"/><stop offset="1" stop-color="#8d4c39"/>
+    </linearGradient>
+    <linearGradient id="bronze-plaque" x1="0" y1="0" x2="0" y2="1">
+      <stop stop-color="#efba81"/><stop offset=".4" stop-color="#a76142"/><stop offset="1" stop-color="#653c36"/>
+    </linearGradient>
+  </defs>
+  <!-- Forged wings sit behind the central shield. -->
+  <g fill="url(#bronze-wing)" stroke="#633930" stroke-width="2" stroke-linejoin="round">
+    <path d="M34 32 16 20 5 23 17 35 3 39 18 48 8 54 30 58 42 42Z"/>
+    <path d="M78 32 96 20 107 23 95 35 109 39 94 48 104 54 82 58 70 42Z"/>
+  </g>
+  <g fill="none" stroke="#ffdfaa" stroke-width="1.5" stroke-linecap="round" opacity=".85">
+    <path d="M10 25 31 37M10 40l23 5M14 53l19-4"/>
+    <path d="m102 25-21 12m21 3-23 5m19 8-19-4"/>
+  </g>
+  <!-- The three-point crown is intentionally sharper than the crystal medal. -->
+  <path d="m38 27-2-15 13 8 7-16 7 16 13-8-2 15-18 8Z" fill="#603a32" stroke="#4d302d" stroke-width="2" stroke-linejoin="round"/>
+  <path d="m39 24-1-9 11 8 7-15 7 15 11-8-1 9-17 7Z" fill="url(#bronze-frame)" stroke="#f5c18a" stroke-width="1.3" stroke-linejoin="round"/>
+  <path d="M43 25h26" stroke="#fff0c5" stroke-width="1.5" stroke-linecap="round"/>
+  <!-- Layered, tapered shield with a dark field for strong icon contrast. -->
+  <path d="M56 20 84 31 81 65Q78 83 56 99 34 83 31 65L28 31Z" fill="#58352f" stroke="#3e302f" stroke-width="2.5" stroke-linejoin="round"/>
+  <path d="M56 24 79 33 76 65Q73 79 56 92 39 79 36 65L33 33Z" fill="url(#bronze-frame)" stroke="#f4bc7e" stroke-width="1.8" stroke-linejoin="round"/>
+  <path d="M56 30 73 37 70 63Q68 74 56 84 44 74 42 63L39 37Z" fill="url(#bronze-face)" stroke="#472f30" stroke-width="1.6" stroke-linejoin="round"/>
+  <path d="M40 35 56 28 72 35" fill="none" stroke="#fff0ba" stroke-width="1.3" stroke-linecap="round" opacity=".9"/>
+  <path d="m42 53 14-11 14 11-5 8-9-5-9 5Z" fill="#4f3432" stroke="#e1a069" stroke-width="1.5" stroke-linejoin="round"/>
+  <path d="m56 35 8 16-5-2v19l-3 6-3-6V49l-5 2Z" fill="url(#bronze-blade)" stroke="#562f2d" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M56 43v24" stroke="#fff0c4" stroke-width="1.5" stroke-linecap="round"/>
+  <path d="m47 69 9 9 9-9" fill="none" stroke="#e3a26c" stroke-width="2" stroke-linejoin="round"/>
+  <g fill="#ffe4af" stroke="#693b31" stroke-width="1"><circle cx="37" cy="40" r="2"/><circle cx="75" cy="40" r="2"/></g>
+  <!-- A broad, high-contrast plaque keeps the name readable at 112 px. -->
+  <path d="M18 84 28 80h56l10 4-5 18H23Z" fill="#52332e" stroke="#3d2d2d" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M22 86 29 83h54l7 3-3 13H25Z" fill="url(#bronze-plaque)" stroke="#ffd29a" stroke-width="1.5" stroke-linejoin="round"/>
+  <path d="M29 86h54" stroke="#ffe3ad" stroke-width="1" opacity=".9"/>
+  <text id="achievement-name" x="56" y="96" text-anchor="middle" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="12.5" font-weight="900" letter-spacing="1" fill="#fff3d3" stroke="#59332d" stroke-width=".45" paint-order="stroke fill">绝壑回身</text>
+</svg>

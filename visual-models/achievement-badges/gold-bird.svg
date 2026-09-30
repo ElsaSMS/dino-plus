@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="112" height="112" viewBox="0 0 112 112" role="img" aria-labelledby="gold-title gold-desc">
+  <title id="gold-title">雄踞长空 · 金徽章</title>
+  <desc id="gold-desc">五尖日冕、宽阔的金属双翼和金红战盾围绕明亮剑锋，底部铭牌写着雄踞长空。</desc>
+  <defs>
+    <linearGradient id="gold-wing" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#fffdeb"/><stop offset=".19" stop-color="#ffe779"/><stop offset=".55" stop-color="#dca625"/><stop offset="1" stop-color="#fff1a9"/>
+    </linearGradient>
+    <linearGradient id="gold-frame" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#fffef0"/><stop offset=".25" stop-color="#ffdf59"/><stop offset=".62" stop-color="#cb9116"/><stop offset="1" stop-color="#fff2a5"/>
+    </linearGradient>
+    <linearGradient id="gold-face" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#285b84"/><stop offset=".43" stop-color="#173c67"/><stop offset="1" stop-color="#17234e"/>
+    </linearGradient>
+    <linearGradient id="gold-blade" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#ffffff"/><stop offset=".42" stop-color="#fff4a8"/><stop offset="1" stop-color="#ffc73b"/>
+    </linearGradient>
+    <linearGradient id="gold-plaque" x1="0" y1="0" x2="0" y2="1">
+      <stop stop-color="#fff7c8"/><stop offset=".36" stop-color="#e8b837"/><stop offset="1" stop-color="#a37117"/>
+    </linearGradient>
+    <radialGradient id="gold-halo">
+      <stop stop-color="#fffde6" stop-opacity=".82"/><stop offset=".54" stop-color="#ffe255" stop-opacity=".42"/><stop offset="1" stop-color="#ffd337" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <circle cx="56" cy="42" r="53" fill="url(#gold-halo)"/>
+  <!-- Three broad feather plates on each side form a commanding silhouette. -->
+  <g fill="url(#gold-wing)" stroke="#996c16" stroke-width="1.8" stroke-linejoin="round">
+    <path d="M36 33 19 10 2 12 20 30 3 28 19 40 2 42 22 51 7 57 30 61 41 45Z"/>
+    <path d="M76 33 93 10 110 12 92 30 109 28 93 40 110 42 90 51 105 57 82 61 71 45Z"/>
+  </g>
+  <g fill="none" stroke="#fffbe3" stroke-linecap="round" stroke-width="1.9">
+    <path d="M7 16 32 38M8 32l26 13M8 45l27 7M11 57l25-4"/>
+    <path d="m105 16-25 22m24-6L78 45m26 0-27 7m24 5-25-4"/>
+  </g>
+  <g fill="#fff1ba" opacity=".95"><path d="m8 6 1.3 3.6L13 11l-3.7 1.4L8 16l-1.3-3.6L3 11l3.7-1.4ZM104 6l1.3 3.6L109 11l-3.7 1.4L104 16l-1.3-3.6-3.7-1.4 3.7-1.4Z"/></g>
+  <!-- Five-point crown, ruby inlay, and a recessed shield face. -->
+  <path d="M35 28 31 7l15 10 10-16 10 16L81 7l-4 21-21 9Z" fill="#a16d17" stroke="#735517" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M38 25 35 12l12 10 9-17 9 17 12-10-3 13-18 8Z" fill="url(#gold-frame)" stroke="#fffbd9" stroke-width="1.5" stroke-linejoin="round"/>
+  <path d="m56 13 4 6-4 6-4-6Z" fill="#fff8b5" stroke="#d79a1d" stroke-width="1.2"/>
+  <circle cx="41" cy="22" r="1.7" fill="#fff7cc"/><circle cx="71" cy="22" r="1.7" fill="#fff7cc"/>
+  <path d="M56 18 86 31 82 69Q79 87 56 103 33 87 30 69L26 31Z" fill="#ae7a20" stroke="#735217" stroke-width="2.5" stroke-linejoin="round"/>
+  <path d="M56 23 81 33 78 67Q75 82 56 95 37 82 34 67L31 33Z" fill="url(#gold-frame)" stroke="#fff3bb" stroke-width="1.8" stroke-linejoin="round"/>
+  <path d="M56 29 74 38 71 65Q69 77 56 87 43 77 41 65L38 38Z" fill="url(#gold-face)" stroke="#ffdf69" stroke-width="1.7" stroke-linejoin="round"/>
+  <path d="M38 35 56 27 74 35" fill="none" stroke="#fff6d0" stroke-width="1.5" stroke-linecap="round"/>
+  <!-- The sunblade is a bold shape rather than the former mountain-road drawing. -->
+  <path d="M56 31 65 47 72 47 66 54 71 62 61 59 56 76 51 59 41 62 46 54 40 47h7Z" fill="#e6a825" stroke="#8e6619" stroke-width="2" stroke-linejoin="round"/>
+  <path d="m56 33 7 17-4-2v20l-3 9-3-9V48l-4 2Z" fill="url(#gold-blade)" stroke="#cf961a" stroke-width="1.8" stroke-linejoin="round"/>
+  <path d="M56 41v27" stroke="#fffef0" stroke-width="1.6" stroke-linecap="round"/>
+  <path d="m42 54 14 5 14-5" fill="none" stroke="#ffdf87" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="m43 68 13 13 13-13" fill="none" stroke="#f7c66e" stroke-width="2.2" stroke-linejoin="round"/>
+  <path d="m35 46 2 4 4 2-4 2-2 4-2-4-4-2 4-2ZM77 46l2 4 4 2-4 2-2 4-2-4-4-2 4-2Z" fill="#fff0b6"/>
+  <!-- Deep edge and bright face of the nameplate make the four glyphs legible. -->
+  <path d="M15 84 27 79h58l12 5-5 20H20Z" fill="#9c721b" stroke="#71521b" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M19 86 28 82h56l9 4-3 15H22Z" fill="url(#gold-plaque)" stroke="#fff1b0" stroke-width="1.6" stroke-linejoin="round"/>
+  <path d="M28 85h56" stroke="#fff7cf" stroke-width="1.2"/>
+  <text id="achievement-name" x="56" y="97" text-anchor="middle" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="12.5" font-weight="900" letter-spacing="1" fill="#fffdf0" stroke="#825816" stroke-width=".5" paint-order="stroke fill">雄踞长空</text>
+</svg>

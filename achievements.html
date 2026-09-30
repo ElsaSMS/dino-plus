@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f5efe2" />
+    <meta name="description" content="小恐龙 PLUS 成就图鉴：看看旅途中留下的徽章与尚待完成的挑战。" />
+    <title>成就图鉴 · 小恐龙 PLUS</title>
+    <link rel="stylesheet" href="./styles.css?v=20260930-silent-whiteout" />
+    <link rel="stylesheet" href="./achievements.css?v=20261001-icons" />
+  </head>
+  <body class="achievements-page">
+    <div class="site-shell">
+      <header class="site-header">
+        <a class="brand" href="./index.html" aria-label="返回小恐龙 PLUS 首页">
+          <span class="brand-mark" aria-hidden="true">✦</span>
+          <span>小恐龙<span class="brand-plus">PLUS</span></span>
+        </a>
+        <a class="header-page-link" href="./index.html">返回游戏 <span aria-hidden="true">↗</span></a>
+      </header>
+
+      <main class="achievement-page-main">
+        <div class="achievement-page-intro">
+          <span class="section-overline">YOUR STORY, IN BADGES</span>
+          <h1>把精彩，<em>留在徽章里。</em></h1>
+          <div id="achievement-progress-summary" class="achievement-summary" aria-live="polite">正在整理你的成就……</div>
+        </div>
+        <div id="achievement-detail-list" class="achievement-detail-list" aria-live="polite"></div>
+      </main>
+
+      <footer class="site-footer"><span>为每一次不服输的重来而造。</span><span>小恐龙 PLUS · 2026</span></footer>
+    </div>
+    <script src="./storage-reset.js?v=20261001-first-run" defer></script>
+    <script src="./achievements.js?v=20261001-progress" defer></script>
+    <script src="./achievements-ui.js?v=20261001-highest" defer></script>
+  </body>
+</html>

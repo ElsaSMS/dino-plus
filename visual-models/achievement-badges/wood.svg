@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="112" height="112" viewBox="0 0 112 112" role="img" aria-labelledby="wood-title wood-desc">
+  <title id="wood-title">初入黄沙·木徽章</title>
+  <desc id="wood-desc">深色雕刻木框包围着日出与山路，木纹清晰可见，铭牌写着初入黄沙。</desc>
+  <defs>
+    <linearGradient id="wood-rim" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#d9a76c"/><stop offset=".43" stop-color="#7f4b32"/><stop offset="1" stop-color="#4b2c27"/>
+    </linearGradient>
+    <linearGradient id="wood-face" x1="0" y1="0" x2=".85" y2="1">
+      <stop stop-color="#b37649"/><stop offset=".52" stop-color="#8c5237"/><stop offset="1" stop-color="#5f392e"/>
+    </linearGradient>
+    <clipPath id="wood-clip"><circle cx="56" cy="56" r="36"/></clipPath>
+  </defs>
+  <path d="M56 4 67 9 78 6 86 16 98 21 100 33 107 44 103 56 107 68 100 79 98 91 86 96 78 106 67 103 56 108 45 103 34 106 26 96 14 91 12 79 5 68 9 56 5 44 12 33 14 21 26 16 34 6 45 9Z" fill="#513129"/>
+  <circle cx="56" cy="55" r="46" fill="url(#wood-rim)" stroke="#e2b37a" stroke-width="2"/>
+  <circle cx="56" cy="55" r="40" fill="#563329" stroke="#e5b87e" stroke-width="1.5"/>
+  <circle cx="56" cy="55" r="36" fill="url(#wood-face)"/>
+  <g clip-path="url(#wood-clip)" fill="none" stroke-linecap="round">
+    <path d="M14 39c20-11 31-5 48-8 15-3 24-9 41-4M15 50c15-6 27-1 39-4 18-4 31-14 48-9M13 68c17-7 28-1 43-5 18-5 28-15 48-11M14 82c20-3 35-12 49-12 15 0 25-7 40-11" stroke="#d99d68" stroke-width="2" opacity=".32"/>
+    <path d="M17 44c18-5 29 1 44-4 16-6 25-10 41-7M10 75c17-5 31 1 49-4 17-4 30-14 45-10" stroke="#462c26" stroke-width="2" opacity=".42"/>
+  </g>
+  <circle cx="56" cy="43" r="8" fill="#edc289" stroke="#6e402d" stroke-width="2"/>
+  <path d="M27 73 44 55 52 63 67 49 85 71" fill="none" stroke="#4c3029" stroke-linecap="round" stroke-linejoin="round" stroke-width="7"/>
+  <path d="M28 73 44 56 52 64 67 50 84 71" fill="none" stroke="#e0ad76" stroke-linecap="round" stroke-linejoin="round" stroke-width="3"/>
+  <path d="M35 81c12-5 29-5 42 0" fill="none" stroke="#e0ad76" stroke-linecap="round" stroke-width="3"/>
+  <path d="M16 77 25 73h62l9 4-5 17-35 7-35-7Z" fill="#452c27" stroke="#e5b77e" stroke-width="1.8" stroke-linejoin="round"/>
+  <path d="M23 79h66l-3 12-30 6-30-6Z" fill="#8d593b" stroke="#c58a5d" stroke-width="1" stroke-linejoin="round"/>
+  <path d="M28 81h56" stroke="#e9bd84" stroke-width=".9" opacity=".75"/>
+  <text id="achievement-name" x="56" y="91" text-anchor="middle" font-family="Microsoft YaHei, PingFang SC, Noto Sans CJK SC, sans-serif" font-size="12" font-weight="800" letter-spacing=".6" fill="#fff0c8" stroke="#3c231f" stroke-width=".65" paint-order="stroke fill">初入黄沙</text>
+  <circle cx="20" cy="55" r="2" fill="#eac08e"/><circle cx="92" cy="55" r="2" fill="#eac08e"/>
+</svg>

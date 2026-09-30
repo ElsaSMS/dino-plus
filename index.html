@@ -7,6 +7,7 @@
     <meta name="description" content="小恐龙 PLUS：可以二连跳、冲过悬崖、自由换装的夕阳跑酷游戏。" />
     <title>小恐龙 PLUS · 夕阳冲刺</title>
     <link rel="stylesheet" href="./styles.css?v=20260930-silent-whiteout" />
+    <link rel="stylesheet" href="./achievements.css?v=20261001-icons" />
   </head>
   <body>
     <div class="site-shell">
@@ -114,11 +115,28 @@
             <ol class="recent-list" id="extreme-recent"><li class="empty-record">还没有完成极限挑战</li></ol>
           </div>
         </aside>
+
+        <section class="achievement-library" aria-labelledby="achievement-library-title">
+          <div class="achievement-library-heading">
+            <div>
+              <span class="section-overline">THE TROPHY CABINET</span>
+              <h2 id="achievement-library-title">成就库 <span aria-hidden="true">✦</span></h2>
+              <p>每一枚徽章，都留着一次值得回味的冒险。</p>
+            </div>
+            <a class="achievement-detail-link" href="./achievements.html">详情 <span aria-hidden="true">↗</span></a>
+          </div>
+          <div id="achievement-library" class="achievement-library-grid" aria-live="polite">
+            <p class="achievement-empty">还没有收藏徽章。出发吧，故事刚刚开始。</p>
+          </div>
+        </section>
       </main>
       <footer class="site-footer"><span>为每一次不服输的重来而造。</span><span>小恐龙 PLUS · 2026</span></footer>
     </div>
+    <script src="./storage-reset.js?v=20261001-first-run" defer></script>
     <script src="./audio/audio.js?v=20260927-jump-land-volume" defer></script>
     <script src="./visual-models/models.js?v=20260930-open-cliffs" defer></script>
-    <script src="./game.js?v=20260930-demo-parity" defer></script>
+    <script src="./achievements.js?v=20261001-progress" defer></script>
+    <script src="./achievements-ui.js?v=20261001-highest" defer></script>
+    <script src="./game.js?v=20261001-bird-achievements" defer></script>
   </body>
 </html>

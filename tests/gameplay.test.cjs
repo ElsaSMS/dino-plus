@@ -8,7 +8,7 @@ const source = fs.readFileSync(path.join(__dirname, '..', 'game.js'), 'utf8');
 const startup = '  updateAudioControls(); updateProfileUI(); fillObstacles(); draw(); requestAnimationFrame(frame);';
 assert.ok(source.includes(startup), 'game test hook location changed');
 
-function createGame(randomValues = [], store = {}, trainingKinds = null, trainingMultiplier = 3.2, overflowPreview = false) {
+function createGame(randomValues = [], store = {}, trainingKinds = null, trainingMultiplier = 3.2, overflowPreview = false, withAchievements = false) {
   const drawCalls = [];
   const canvasContext = new Proxy({}, {
     get: (_, key) => key === 'createLinearGradient' || key === 'createRadialGradient'
@@ -55,6 +55,7 @@ function createGame(randomValues = [], store = {}, trainingKinds = null, trainin
     localStorage: { getItem: (key) => store[key] ?? null, setItem: (key, value) => { store[key] = value; },
       removeItem: (key) => { delete store[key]; } }
   };
+  if (withAchievements) sandbox.window.localStorage = sandbox.localStorage;
   const hook = `  globalThis.gameTest = {
     sound, powerupMultiplier, movingBirdSpeed, triggerBlast,
     powerupEpoch: () => powerupEpochX,
@@ -96,6 +97,7 @@ function createGame(randomValues = [], store = {}, trainingKinds = null, trainin
     worldPosition: () => worldX,
     playerState: () => ({ ...player }),
     playerBoxes: () => playerHitboxes(),
+    beakCapture: (obstacle) => giantBeakBetweenFeet(obstacle, playerHitboxes()),
     player: (x, feetY, crouch) => {
       worldX = x; player.feetY = feetY; player.crouch = crouch;
     },
@@ -104,10 +106,12 @@ function createGame(randomValues = [], store = {}, trainingKinds = null, trainin
     hitBoxes: (obstacle, boxes) => hitObstacle(obstacle, boxes)
   };`;
   vm.createContext(sandbox);
+  if (withAchievements) vm.runInContext(fs.readFileSync(path.join(__dirname, '../achievements.js'), 'utf8'), sandbox);
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../visual-models/models.js'), 'utf8'), sandbox);
   vm.runInContext(source.replace(startup, hook), sandbox, { filename: 'game.js' });
   return {
     ...sandbox.gameTest,
+    achievements: sandbox.window.DinoAchievements,
     store, element: getElement,
     drawCalls,
     resetTraining: () => sandbox.window.DinoTraining?.resetRun(),
@@ -120,6 +124,8 @@ function createGame(randomValues = [], store = {}, trainingKinds = null, trainin
     },
     keyUp: (code) => windowListeners.keyup({ code }),
     blur: () => windowListeners.blur(),
+    pagehide: () => windowListeners.pagehide?.(),
+    pageshow: (persisted) => windowListeners.pageshow?.({ persisted }),
     focus: (tagName) => { documentMock.activeElement = tagName === 'start-button'
       ? getElement('start-button') : { tagName }; },
     activeTag: () => documentMock.activeElement.tagName
@@ -1986,7 +1992,7 @@ test('formal game covers the entire card and keeps demo instructions out of the 
 });
 
 test('local demo uses the real classic game from 2147483000m without hazards or record writes', () => {
-  const game = createGame([], {}, null, 3.2, true);
+  const game = createGame([], {}, null, 3.2, true, true);
   const recordBefore = game.store['elsasms.dino-plus.v1.profile'];
   game.startGame();
   assert.equal(game.mode(), 'running');
@@ -1998,10 +2004,256 @@ test('local demo uses the real classic game from 2147483000m without hazards or 
   assert.equal(game.mode(), 'overflow');
   assert.equal(game.element('overflow-whiteout').hidden, false);
   assert.equal(game.store['elsasms.dino-plus.v1.profile'], recordBefore);
+  assert.equal(game.store['elsasms.dino-plus.v1.achievements'], undefined,
+    'the local whiteout preview must not unlock badges in the main game');
   game.element('mode-reset').click();
   assert.equal(game.mode(), 'ready');
   assert.equal(game.worldPosition(), 0);
   assert.equal(game.element('distance').textContent, '0000');
   game.startGame();
   assert.equal(game.worldPosition(), 2147483000 * 10);
+});
+
+test('achievement settlement records manual reset and page reload exactly once', () => {
+  const game = createGame([], {}, null, 3.2, false, true);
+  const award = (tier) => game.achievements.getView().groups.find((group) => group.id === 'classic')
+    .awards.find((item) => item.tier === tier);
+  game.startGame();
+  game.player(100010, 320, false);
+  game.pagehide();
+  assert.equal(award('bronze').unlocked, true);
+  assert.equal(award('gold').progress, '10001/1000000');
+  game.pagehide();
+  assert.equal(award('gold').progress, '10001/1000000');
+  game.startGame();
+  game.player(500010, 320, false);
+  game.resetGame();
+  assert.equal(award('silver').unlocked, true);
+  assert.equal(award('gold').progress, '60002/1000000');
+});
+
+test('restoring a cached game page returns to the start after settling its old run', () => {
+  const game = createGame([], {}, null, 3.2, false, true);
+  game.startGame();
+  game.player(120000, 320, false);
+  game.pagehide();
+  game.pageshow(true);
+  assert.equal(game.mode(), 'ready');
+  assert.equal(game.worldPosition(), 0);
+  const bronze = game.achievements.getView().groups.find((group) => group.id === 'classic').awards[0];
+  assert.equal(bronze.unlocked, true);
+});
+
+test('extreme reset starts a fresh achievement run when resumed from 0m', () => {
+  const game = createGame([], {}, null, 3.2, false, true);
+  game.element('extreme-mode').click();
+  game.startGame();
+  game.player(5000, 320, false);
+  game.element('mode-reset').click();
+  assert.equal(game.mode(), 'paused');
+  game.element('start-button').click();
+  game.setObstacles([]);
+  game.next(Infinity);
+  game.player(999999, 320, false);
+  game.tick(.032);
+  const award = game.achievements.getView().groups.find((group) => group.id === 'extreme').awards;
+  assert.equal(game.mode(), 'over');
+  assert.equal(award[0].unlocked, true);
+  assert.equal(award[3].unlocked, true);
+});
+
+test('clearing high thorns and high birds in one airtime credits the real game events', () => {
+  const game = createGame([], {}, null, 3.2, false, true);
+  game.startGame();
+  game.setObstacles([game.makeObstacle('tallThorn', 50, 84), game.makeObstacle('duck', 190, 68)]);
+  game.next(Infinity);
+  game.keyDown('Space');
+  for (let frame = 0; frame < 80 && game.worldPosition() < 300; frame++) {
+    game.setPlayerState({ feetY: 50, vy: 0, grounded: false, jumps: 1 });
+    game.tick(.016);
+  }
+  for (let frame = 0; frame < 80 && !game.playerState().grounded; frame++) game.tick(.016);
+  assert.equal(game.mode(), 'running');
+  game.endGame();
+  const groups = game.achievements.getView().groups;
+  assert.equal(groups.find((group) => group.id === 'thorn').awards[0].unlocked, true);
+  assert.equal(groups.find((group) => group.id === 'bird').awards[0].unlocked, true);
+  assert.equal(groups.find((group) => group.id === 'air').awards[0].unlocked, true);
+});
+
+test('jumping over a hovering giant counts when passing above its local beak and tail outline', () => {
+  const game = createGame([], {}, null, 3.2, false, true);
+  game.startGame();
+  game.player(25000, 320, false);
+  const bird = { kind: 'giantHover', x: 25400, width: 418, seed: 0 };
+  game.setObstacles([bird]);
+  game.next(Infinity);
+  game.keyDown('Space');
+  let secondJump = false;
+  for (let frame = 0; frame < 600 && !bird.achievement?.recorded; frame++) {
+    if (!secondJump && game.elapsed() >= .35) { game.keyDown('Space'); secondJump = true; }
+    game.tick(.004);
+  }
+  assert.equal(game.mode(), 'running');
+  assert.equal(bird.achievement?.recorded, true);
+  game.endGame();
+  const bronze = game.achievements.getView().groups.find((group) => group.id === 'bird').awards[0];
+  assert.equal(bronze.unlocked, true);
+  assert.equal(bronze.progress, '1/1');
+});
+
+test('ducking under a hovering giant does not count as jumping over it', () => {
+  const game = createGame([], {}, null, 3.2, false, true);
+  game.startGame();
+  const bird = { kind: 'giantHover', x: 300, width: 280, seed: 0 };
+  game.setObstacles([bird]);
+  game.next(Infinity);
+  game.keyDown('KeyS');
+  for (let frame = 0; frame < 200 && !bird.achievement?.recorded; frame++) game.tick(.016);
+  assert.equal(game.mode(), 'running');
+  assert.equal(bird.achievement?.recorded, true);
+  game.endGame();
+  const bronze = game.achievements.getView().groups.find((group) => group.id === 'bird').awards[0];
+  assert.equal(bronze.unlocked, false);
+});
+
+test('shield shattering a distant moving bird and jetpack filling a landing gap count as lucky encounters', () => {
+  const game = createGame([], {}, null, 3.2, false, true);
+  game.startGame();
+  game.setObstacles([game.makeObstacle('cactus', 0, 42), game.makeObstacle('movingHigh', 200, 68)]);
+  game.next(Infinity);
+  game.setShieldReady(true);
+  for (let frame = 0; frame < 30; frame++) game.tick(.016);
+  game.endGame();
+  let groups = game.achievements.getView().groups;
+  assert.equal(groups.find((group) => group.id === 'shieldBird').awards[0].unlocked, true);
+
+  game.startGame();
+  game.setObstacles([game.makeObstacle('gap', 8000, 300)]);
+  game.next(Infinity);
+  game.startJetpack();
+  game.player(8000, 320, false);
+  game.updateJetpack();
+  game.endGame();
+  groups = game.achievements.getView().groups;
+  assert.equal(groups.find((group) => group.id === 'jetpackCliff').awards[0].unlocked, true);
+});
+
+test('escaping from below the screen credits a recovered cliff', () => {
+  const game = createGame([], {}, null, 3.2, false, true);
+  game.startGame();
+  const gap = { kind: 'gap', x: 100, width: 360 };
+  game.setObstacles([gap]);
+  game.next(Infinity);
+  game.player(200, 480, false);
+  game.setPlayerState({ grounded: false, jumps: 0, vy: 0 });
+  game.tick(.004);
+  game.keyDown('Space');
+  for (let frame = 0; frame < 70; frame++) game.tick(.004);
+  game.keyDown('Space');
+  for (let frame = 0; frame < 300 && game.worldPosition() < gap.x + gap.width + 90; frame++) {
+    game.tick(.004);
+    if (game.mode() !== 'running') break;
+  }
+  assert.equal(game.mode(), 'running');
+  assert.equal(game.playerState().grounded, true);
+  game.endGame();
+  const cliff = game.achievements.getView().groups.find((group) => group.id === 'cliff');
+  assert.equal(cliff.awards[0].unlocked, true);
+});
+
+test('cliff dive credit requires pressing down before reaching the bottom of the view', () => {
+  for (const [feetY, expected] of [[420, true], [432, false]]) {
+    const game = createGame([], {}, null, 3.2, false, true);
+    game.startGame();
+    game.setObstacles([{ kind: 'gap', x: 100, width: 360 }]);
+    game.next(Infinity);
+    game.player(200, feetY, false);
+    game.setPlayerState({ grounded: false, jumps: 0, vy: 0 });
+    game.keyDown('KeyS');
+    assert.equal(game.obstacles()[0].achievement?.dived === true, expected);
+  }
+});
+
+test('beak capture matches the drawn gap between the hind legs for both giant birds', () => {
+  for (const [kind, tipY] of [['giantGround', 280], ['giantHover', 238]]) {
+    for (const [rise, tipX, expected] of [
+      [8, -5, true], [8, -9, true], [8, -11, false], [8, 5, false],
+      [1, -2.5, false], [1, 0, true], [1, 2.5, false]
+    ]) {
+      const game = createGame([], {}, null, 3.2, false, true);
+      game.startGame();
+      const width = game.obstacleWidth(kind, 25000);
+      const bird = { kind, x: tipX - width * .99, width, seed: 0 };
+      game.setObstacles([bird]);
+      game.next(Infinity);
+      game.player(0, tipY + rise, false);
+      game.setPlayerState({ grounded: false, jumps: 1, vy: 0 });
+      assert.equal(game.beakCapture(bird), expected, `${kind} tip at ${tipX}px, rise ${rise}px`);
+      game.tick(0);
+      if (game.mode() === 'over') {
+        const badge = game.achievements.getView().groups.find((group) => group.id === 'beak').awards[0];
+        assert.equal(badge.unlocked, expected);
+      }
+    }
+  }
+});
+
+test('real jumps and a dive can earn the beak badge against both generated giant sizes', () => {
+  for (const [kind, width, x, diveFrame, deathFrame] of [
+    ['giantGround', 607, 25114, 54, 56],
+    ['giantHover', 417, 25168, 38, 45]
+  ]) {
+    const game = createGame([], {}, null, 3.2, false, true);
+    game.startGame();
+    assert.equal(game.obstacleWidth(kind, 25000), width);
+    const bird = { kind, x, width, seed: 0 };
+    game.setObstacles([bird]);
+    game.next(Infinity);
+    game.player(25000, 320, false);
+    game.setPlayerState({ feetY: 320, vy: 0, jumps: 0, grounded: true, diving: false });
+    game.keyDown('Space');
+    for (let frame = 0; frame <= deathFrame && game.mode() === 'running'; frame++) {
+      if (frame === 9) game.keyDown('Space');
+      if (frame === diveFrame) game.keyDown('KeyS');
+      game.tick(1 / 60);
+    }
+    assert.equal(game.mode(), 'over', kind);
+    assert.equal(game.beakCapture(bird), true, `${kind}: beak tip is in the visible gap`);
+    const badge = game.achievements.getView().groups.find((group) => group.id === 'beak').awards[0];
+    assert.equal(badge.unlocked, true, `${kind}: the visible capture is credited`);
+  }
+});
+
+test('beak capture follows the visible death frame across different frame durations', () => {
+  for (const dt of [.004, .016, .032]) {
+    const game = createGame([], {}, null, 3.2, false, true);
+    game.startGame();
+    game.player(25000, 270, false);
+    game.setPlayerState({ grounded: false, jumps: 1, vy: 400 });
+    const bird = { kind: 'giantGround', x: 25000 + 30 - .99 * 418, width: 418, seed: 0 };
+    game.setObstacles([bird]);
+    game.next(Infinity);
+    for (let frame = 0; frame < 30 && game.mode() === 'running'; frame++) game.tick(dt);
+    assert.equal(game.mode(), 'over');
+    const badge = game.achievements.getView().groups.find((group) => group.id === 'beak').awards[0];
+    assert.equal(badge.unlocked, game.beakCapture(bird), `dt=${dt}: badge matches the frozen visual pose`);
+  }
+});
+
+test('three separate warning hazards safely passing credit the warning encounter', () => {
+  const game = createGame([], {}, null, 3.2, false, true);
+  game.startGame();
+  game.setObstacles([800, 1300, 1800].map((x) => game.makeObstacle('movingHigh', x, 68)));
+  game.next(Infinity);
+  for (let frame = 0; frame < 500 && game.worldPosition() < 2100; frame++) {
+    game.setPlayerState({ feetY: 0, vy: 0, grounded: false, jumps: 0 });
+    game.tick(.016);
+    if (game.mode() !== 'running') break;
+  }
+  assert.equal(game.mode(), 'running');
+  game.endGame();
+  const warning = game.achievements.getView().groups.find((group) => group.id === 'warning').awards[0];
+  assert.equal(warning.unlocked, true);
+  assert.equal(warning.progress, '当前遇到 1 次');
 });

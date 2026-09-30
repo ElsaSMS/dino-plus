@@ -70,6 +70,10 @@
     collapse: noSound, shieldPickup: noSound, shieldBreak: noSound,
     explosion: noSound, jetpack: noSound
   };
+  const achievements = (!overflowDemo && window.DinoAchievements) || {
+    startRun: noSound, record: noSound, finishRun: noSound,
+    noteNickname: noSound, noteOutfit: noSound
+  };
   function updateAudioControls() {
     const { muted, musicVolume, effectsVolume } = sound.settings();
     ui.audioToggle.setAttribute('aria-pressed', String(!muted));
@@ -113,6 +117,7 @@
   if (writeStore(PROFILE_KEY, profile) && legacyProfiles !== null) {
     try { localStorage.removeItem(LEGACY_PROFILES_KEY); } catch { /* Keep the legacy backup if storage is read-only. */ }
   }
+  achievements.noteOutfit(profile.outfit);
   let mode = 'ready';
   let worldX = 0;
   let speed = BASE_SPEED;
@@ -147,6 +152,11 @@
   let shieldBreakY = 0;
   let shieldDebris = [];
   let blastColorful = false;
+  let achievementRunMode = null;
+  let achievementAir = null;
+  let achievementAirSerial = 0;
+  let blastCause = null;
+  let jetpackLandingGap = null;
 
   const rand = (min, max) => min + Math.random() * (max - min);
   const progress = (x) => Math.min(1, Math.max(0, x / 7000));
@@ -228,7 +238,15 @@
     ui.pauseButton.textContent = mode === 'paused' ? '继续' : '暂停';
     if (mode !== 'running') ui.warning.hidden = true;
   }
+  function settleAchievementRun(options = {}) {
+    if (!achievementRunMode) return;
+    achievements.finishRun({ distance: score(), completedExtreme: Boolean(options.completedExtreme),
+      rescues: rescueCount, overflow: Boolean(options.overflow) });
+    achievementRunMode = null;
+    achievementAir = null;
+  }
   function resetGame() {
+    settleAchievementRun();
     sound.ready();
     worldX = 0; speed = runSpeedAt(0); obstacles = []; shieldPickups = [];
     jetpackPickups = []; jetpackActive = false; jetpackStartX = 0; jetpackStartY = GROUND;
@@ -243,6 +261,7 @@
     shieldRecoverySpawnPending = false; shieldWarningSpawnPending = false;
     shieldBreakAt = -Infinity;
     shieldDebris = [];
+    achievementAir = null; blastCause = null; jetpackLandingGap = null;
     downKeys.clear(); touchDownHeld = false;
     ui.warning.hidden = true;
     if (ui.whiteout) ui.whiteout.hidden = true;
@@ -252,7 +271,13 @@
     fillObstacles();
   }
   function startGame() {
-    if (mode === 'paused') { setMode('running'); hideOverlay(); sound.resume(); return; }
+    if (mode === 'paused') {
+      if (!achievementRunMode) {
+        achievementRunMode = trainingMode ? 'training' : extremeMode ? 'extreme' : 'classic';
+        achievements.startRun(achievementRunMode);
+      }
+      setMode('running'); hideOverlay(); sound.resume(); return;
+    }
     resetGame();
     if (overflowDemo && !trainingMode && !extremeMode) {
       worldX = OVERFLOW_DEMO_START;
@@ -262,6 +287,8 @@
       recordCelebrated = true;
       ui.distance.textContent = String(score());
     }
+    achievementRunMode = trainingMode ? 'training' : extremeMode ? 'extreme' : 'classic';
+    achievements.startRun(achievementRunMode);
     setMode('running'); hideOverlay(); sound.start();
   }
   function pauseGame() {
@@ -277,6 +304,9 @@
     const fromGround = player.grounded;
     player.vy = JUMP_VELOCITY;
     player.jumps += 1;
+    if (!achievementAir || fromGround) {
+      achievementAir = { id: ++achievementAirSerial, cleared: [] };
+    }
     sound.jump(player.jumps === 2);
     player.grounded = false;
     player.crouch = false;
@@ -286,11 +316,18 @@
   function pressDown() {
     if (mode === 'paused' || mode === 'over' || mode === 'overflow' || jetpackActive) return;
     if (player.grounded) { player.crouch = true; return; }
+    if (player.feetY < H) for (const obstacle of obstacles) {
+      if (isGapKind(obstacle.kind) && isOpenGap(obstacle)
+        && worldX > obstacle.x && worldX < obstacle.x + obstacle.width) {
+        achievementState(obstacle).dived = true;
+      }
+    }
     player.diving = true;
     player.vy = Math.max(player.vy, 0);
   }
   function endGame() {
     if (mode !== 'running') return;
+    settleAchievementRun();
     setMode('over'); sound.end();
     const finalScore = score();
     if (extremeMode) {
@@ -309,6 +346,8 @@
     if (trainingMode || extremeMode || mode !== 'running') return;
     // The world position stays precise; only the classic distance counter uses signed 32-bit arithmetic.
     ui.distance.textContent = String(score() | 0);
+    achievements.record('overflow');
+    settleAchievementRun({ overflow: true });
     setMode('overflow');
     sound.ready();
     sound.explosion();
@@ -321,6 +360,7 @@
     if (!extremeMode || mode !== 'running' || worldX < EXTREME_DISTANCE) return;
     worldX = EXTREME_DISTANCE;
     ui.distance.textContent = String(EXTREME_DISTANCE / 10);
+    settleAchievementRun({ completedExtreme: true });
     setMode('over'); sound.end();
     const isRecord = profile.extremeBest === null || rescueCount < profile.extremeBest;
     if (isRecord) profile.extremeBest = rescueCount;
@@ -769,6 +809,13 @@
   function shatterReachedObstacles(radius) {
     obstacles = obstacles.filter((obstacle) => {
       if (shieldBlastDistance(obstacle) > radius) return true;
+      if (blastCause === 'shield' && isMovingBird(obstacle.kind)
+        && obstacle.x > worldX + 80) achievements.record('shieldBlastBird');
+      if (blastCause === 'jetpack' && obstacle === jetpackLandingGap) {
+        achievements.record('jetpackFillGap');
+        jetpackLandingGap = null;
+      }
+      achievementFailObstacle(obstacle);
       shatterObstacle(obstacle);
       return false;
     });
@@ -788,11 +835,13 @@
   }
   function consumeShield() {
     shieldReady = false;
-    triggerBlast(false);
+    triggerBlast(false, 'shield');
   }
-  function triggerBlast(colorful) {
+  function triggerBlast(colorful, cause = colorful ? 'jetpack' : 'rescue') {
     powerupEpochX = worldX;
     blastColorful = colorful;
+    blastCause = cause;
+    if (cause !== 'jetpack') jetpackLandingGap = null;
     sound.explosion();
     shieldBufferUntil = elapsed + SHIELD_BUFFER_SECONDS;
     shieldUntil = Math.max(shieldUntil, shieldBufferUntil);
@@ -818,6 +867,7 @@
   }
   function startJetpack() {
     jetpackActive = true;
+    achievementAir = null;
     jetpackStartX = worldX;
     jetpackStartY = player.feetY;
     jetpackPickups = []; shieldPickups = [];
@@ -838,7 +888,9 @@
       jetpackActive = false; sound.jetpack(false);
       player.feetY = GROUND; player.grounded = true; player.jumps = 0;
       downKeys.clear(); touchDownHeld = false;
-      triggerBlast(true);
+      jetpackLandingGap = obstacles.find((obstacle) => isOpenGap(obstacle)
+        && obstacle.x < worldX + 18 && obstacle.x + obstacle.width > worldX - 9) || null;
+      triggerBlast(true, 'jetpack');
     }
   }
   function rescue(fromFall) {
@@ -848,7 +900,154 @@
       // The blast fills the current cliff. Restore the player here without skipping distance.
       player = { feetY: GROUND, vy: 0, jumps: 0, crouch: false, grounded: true, diving: false };
     }
-    triggerBlast(false);
+    achievementAir = null;
+    triggerBlast(false, 'rescue');
+  }
+  const isAerialBird = (kind) => kind === 'duck' || kind === 'movingHigh' || kind === 'giantHover';
+  function achievementState(obstacle) {
+    if (!obstacle.achievement) obstacle.achievement = {
+      seen: false, recorded: false, warned: false, airId: null, mixedAir: false,
+      airborne: false, maxJumps: 0, above: true, deep: false, dived: false, escaped: false
+    };
+    return obstacle.achievement;
+  }
+  function outlineTopInRange(points, left, right) {
+    let top = Infinity;
+    for (let index = 0; index < points.length; index++) {
+      const a = points[index];
+      const b = points[(index + 1) % points.length];
+      if (a[0] >= left && a[0] <= right) top = Math.min(top, a[1]);
+      for (const boundary of [left, right]) {
+        if ((a[0] < boundary && b[0] > boundary) || (a[0] > boundary && b[0] < boundary)) {
+          top = Math.min(top, a[1] + (b[1] - a[1]) * (boundary - a[0]) / (b[0] - a[0]));
+        }
+      }
+    }
+    return top;
+  }
+  function giantBirdAbovePlayer(obstacle, boxes) {
+    const cx = obstacle.x + obstacle.width * .53;
+    const cy = GROUND + birdStyles[obstacle.kind].center;
+    const radiusX = obstacle.width * .30;
+    const contours = Object.values(giantBirdParts(obstacle))
+      .flatMap((part) => Array.isArray(part) ? part : [part])
+      .map((part) => outlinePoints(part, 20).map(([x, y]) => [cx + x, cy + y]));
+    return boxes.every((box) => {
+      let top = Infinity;
+      if (box.right > cx - radiusX && box.left < cx + radiusX) {
+        const x = Math.max(box.left, Math.min(cx, box.right));
+        top = cy - 28 * Math.sqrt(Math.max(0, 1 - ((x - cx) / radiusX) ** 2));
+      }
+      for (const points of contours) top = Math.min(top, outlineTopInRange(points, box.left, box.right));
+      return box.bottom <= top + 3;
+    });
+  }
+  function aerialBirdTop(obstacle) {
+    const centerY = GROUND + birdStyles[obstacle.kind].center;
+    const tipY = highBirdWingTip(obstacle);
+    return centerY + Math.min(-12, ...highBirdWingPoints(0, tipY).map(([, y]) => y));
+  }
+  function trackAchievementObstacles(boxes) {
+    const left = worldX - 35;
+    const right = worldX + 49;
+    const playerBottom = Math.max(...boxes.map((box) => box.bottom));
+    for (const obstacle of obstacles) {
+      const state = obstacle.achievement;
+      if (isGapKind(obstacle.kind) && state?.deep && player.grounded
+        && worldX > obstacle.x + obstacle.width && player.feetY <= GROUND) state.escaped = true;
+      if (obstacle.x >= right || obstacle.x + obstacle.width <= left) continue;
+      const current = achievementState(obstacle);
+      current.seen = true;
+      if (achievementAir && !player.grounded && !jetpackActive) {
+        if (current.airId === null) current.airId = achievementAir.id;
+        else if (current.airId !== achievementAir.id) current.mixedAir = true;
+        current.airborne = true;
+        current.maxJumps = Math.max(current.maxJumps, player.jumps);
+      }
+      if (isAerialBird(obstacle.kind)
+        && (!achievementAir || player.grounded || jetpackActive
+          || (obstacle.kind === 'giantHover'
+            ? !giantBirdAbovePlayer(obstacle, boxes)
+            : playerBottom > aerialBirdTop(obstacle) + 3))) {
+        current.above = false;
+      }
+      if (isGapKind(obstacle.kind) && isOpenGap(obstacle)
+        && worldX > obstacle.x && worldX < obstacle.x + obstacle.width) {
+        if (player.feetY >= H) current.deep = true;
+      }
+    }
+  }
+  function achievementFailObstacle(obstacle) {
+    const state = achievementState(obstacle);
+    if (state.recorded) return;
+    if (state.seen && obstacle.kind === 'tallThorn') achievements.record('highThornResult', { single: false });
+    if (state.seen && isAerialBird(obstacle.kind)) {
+      achievements.record('birdResult', { over: false,
+        small: obstacle.kind !== 'giantHover', single: false });
+    }
+    if (state.seen && isGapKind(obstacle.kind)) {
+      achievements.record('cliffResult', { kind: obstacle.pillarScene ? 'skyPillar' : obstacle.kind,
+        recovered: false, dived: false });
+    }
+    if (state.warned) achievements.record('warningFail');
+    state.recorded = true;
+  }
+  function clearAchievementObstacles() {
+    for (const obstacle of obstacles) {
+      const state = obstacle.achievement;
+      if (!state?.seen || state.recorded || obstacle.x + obstacle.width >= worldX - 35) continue;
+      if (isGapKind(obstacle.kind) && state.deep && !state.escaped && !player.grounded) continue;
+      let highKind = null;
+      if (obstacle.kind === 'tallThorn') {
+        achievements.record('highThornResult', { single: state.airborne && !state.mixedAir
+          && state.maxJumps === 1 });
+        highKind = 'thorn';
+      } else if (isAerialBird(obstacle.kind)) {
+        const over = state.airborne && !state.mixedAir && state.above;
+        const small = obstacle.kind !== 'giantHover';
+        achievements.record('birdResult', { over, small, single: over && state.maxJumps === 1 });
+        if (over && small) highKind = 'bird';
+      } else if (isGapKind(obstacle.kind)) {
+        achievements.record('cliffResult', { kind: obstacle.pillarScene ? 'skyPillar' : obstacle.kind,
+          recovered: state.deep && state.escaped, dived: state.deep && state.escaped && state.dived });
+      }
+      if (state.warned) achievements.record('warningClear');
+      if (achievementAir && state.airId === achievementAir.id && state.airborne && !state.mixedAir) {
+        achievementAir.cleared.push({ kind: obstacle.kind, highKind });
+      }
+      state.recorded = true;
+    }
+  }
+  function finishAchievementAir() {
+    if (!achievementAir) return;
+    if (achievementAir.cleared.length >= 2) {
+      achievements.record('airCombo', { obstacles: achievementAir.cleared.length,
+        highKinds: achievementAir.cleared.map((item) => item.highKind).filter(Boolean) });
+    }
+    achievementAir = null;
+  }
+  function giantBeakBetweenFeet(obstacle, boxes) {
+    if (obstacle.kind !== 'giantGround' && obstacle.kind !== 'giantHover') return false;
+    const cx = obstacle.x + obstacle.width * .53;
+    const cy = GROUND + birdStyles[obstacle.kind].center;
+    const tipX = cx + obstacle.width * .46;
+    const tipY = cy + 4;
+    // Use the inner edges of the two drawn shins. The collision foot rectangles
+    // cover more space than the visible gap and cannot define this achievement.
+    const sx = player.crouch ? 1.17 : 1;
+    const sy = player.crouch ? .72 : 1;
+    const rise = (player.feetY - tipY) / sy;
+    if (rise < 1 || rise > 11) return false;
+    const rearT = -1 + Math.sqrt(4 - Math.min(rise, 3));
+    const frontT = -1 + Math.sqrt(1 + Math.min(rise, 3));
+    const rearInner = rise <= 3 ? -5 + 6 * rearT - 3 * rearT * rearT : -10;
+    const frontInner = rise <= 3 ? 3 - 4 * frontT + 4 * frontT * frontT : 3;
+    if (tipX <= worldX + rearInner * sx || tipX >= worldX + frontInner * sx) return false;
+    const leftLeg = boxes[4];
+    const rightLeg = boxes[5];
+    const beak = outlinePoints(giantBirdParts(obstacle).beak, 24)
+      .map(([x, y]) => [cx + x, cy + y]);
+    return polygonHitsBox(beak, leftLeg, 0) || polygonHitsBox(beak, rightLeg, 0);
   }
   function timeUntilVisible(obstacle) {
     const moving = isMovingBird(obstacle.kind);
@@ -906,15 +1105,19 @@
       if (pickup.follow) pickup.x = pickup.follow.x + pickup.offsetX;
     }
     updateShieldBlast(dt);
-    obstacles = obstacles.filter((o) => o.x + o.width > worldX - 300);
+    obstacles = obstacles.filter((o) => o.x + o.width > worldX - 300
+      || (isGapKind(o.kind) && o.achievement?.deep && !o.achievement.recorded));
     shieldPickups = shieldPickups.filter((pickup) => pickup.x > worldX - 300
       && (!pickup.source || obstacles.includes(pickup.source)));
     jetpackPickups = jetpackPickups.filter((pickup) => pickup.x > worldX - 300
       && (!pickup.source || obstacles.includes(pickup.source)));
-    const warningVisible = !jetpackActive && elapsed >= shieldWarningSpawnAfter && Boolean(warningTarget());
+    const warnedObstacle = !jetpackActive && elapsed >= shieldWarningSpawnAfter ? warningTarget() : null;
+    if (warnedObstacle) achievementState(warnedObstacle).warned = true;
+    const warningVisible = Boolean(warnedObstacle);
     if (warningVisible && ui.warning.hidden) sound.warning();
     ui.warning.hidden = !warningVisible;
     const wasFeetY = player.feetY;
+    let landedThisFrame = false;
     const supported = hasGroundSupport(worldX);
     if (jetpackActive) updateJetpack();
     else if (!player.grounded || !supported) {
@@ -928,29 +1131,49 @@
         player.feetY = GROUND; player.vy = 0; player.jumps = 0; player.grounded = true;
         player.crouch = player.diving && isDownHeld();
         player.diving = false;
+        landedThisFrame = true;
         sound.land();
       }
     }
     const boxes = playerHitboxes();
+    trackAchievementObstacles(boxes);
     if (shieldReady || jetpackActive) shieldPickups = [];
     else if (shieldPickups.some((pickup) => pickupHitsBoxes(pickup, boxes))) {
       shieldReady = true;
       shieldPickups = [];
       sound.shieldPickup();
+      achievements.record('pickup', { kind: 'shield', seconds: elapsed });
     }
-    if (!jetpackActive && jetpackPickups.some((pickup) => pickupHitsBoxes(pickup, boxes))) startJetpack();
+    if (!jetpackActive && jetpackPickups.some((pickup) => pickupHitsBoxes(pickup, boxes))) {
+      achievements.record('pickup', { kind: 'jetpack', seconds: elapsed });
+      startJetpack();
+    }
     const invincible = jetpackActive || elapsed < shieldBufferUntil;
     const fell = !invincible && (hitRightCliffWall(boxes) || player.feetY >= FALL_SCREEN_LIMIT);
     const hits = !invincible && !fell && elapsed >= shieldUntil ? obstacles.filter((o) => hitObstacle(o, boxes)) : [];
     const struckPillar = hits.some((o) => o.kind === 'skyPillar');
+    if (fell) {
+      obstacles.filter((o) => isGapKind(o.kind) && isOpenGap(o)
+        && worldX >= o.x - 30 && worldX <= o.x + o.width + 80)
+        .forEach(achievementFailObstacle);
+    }
+    hits.forEach(achievementFailObstacle);
+    clearAchievementObstacles();
     if (fell || struckPillar) {
+      achievementAir = null;
       if (extremeMode || trainingMode) rescue(fell);
       else { endGame(); return; }
     } else if (hits.length) {
+      if (!shieldReady && !extremeMode && !trainingMode && hits.length === 1
+        && (hits[0].kind === 'giantGround' || hits[0].kind === 'giantHover')) {
+        if (giantBeakBetweenFeet(hits[0], boxes)) achievements.record('beakDeath');
+      }
+      achievementAir = null;
       if (shieldReady) consumeShield();
       else if (extremeMode || trainingMode) rescue(false);
       else { endGame(); return; }
     }
+    if (landedThisFrame) finishAchievementAir();
     if (extremeMode && worldX >= EXTREME_DISTANCE) { finishExtreme(); return; }
     const current = score();
     ui.distance.textContent = padded(current);
@@ -976,6 +1199,7 @@
     if (!name) { ui.nameHint.textContent = '请先输入一个昵称。'; ui.name.focus(); return; }
     activeName = name;
     const saved = writeStore(ACTIVE_KEY, activeName);
+    achievements.noteNickname(activeName);
     ui.nameHint.textContent = saved ? `已更名为 ${name}，纪录和装扮保留。` : '昵称暂时无法保存，请检查浏览器存储设置。';
     updateProfileUI();
   });
@@ -984,6 +1208,7 @@
     const button = e.target.closest('[data-outfit]');
     if (!button || !outfits[button.dataset.outfit]) return;
     profile.outfit = button.dataset.outfit; writeStore(PROFILE_KEY, profile); updateProfileUI();
+    achievements.noteOutfit(profile.outfit);
   });
   ui.startButton.addEventListener('click', startGame);
   ui.pauseButton.addEventListener('click', () => { pauseGame(); ui.pauseButton.blur(); });
@@ -1024,6 +1249,12 @@
     };
     showReadyOverlay();
   }
+  window.addEventListener('pagehide', () => settleAchievementRun());
+  window.addEventListener('beforeunload', () => settleAchievementRun());
+  window.addEventListener('pageshow', (event) => {
+    if (!event.persisted || achievementRunMode || (mode !== 'running' && mode !== 'paused')) return;
+    resetGame(); setMode('ready'); showReadyOverlay(); updateProfileUI();
+  });
   ui.audioToggle.addEventListener('click', () => {
     sound.setMuted(!sound.settings().muted);
     updateAudioControls();
