@@ -239,10 +239,10 @@
   }
   function settleAchievementRun(options = {}) {
     if (!achievementRunMode) return;
+    cancelAchievementAir();
     achievements.finishRun({ distance: score(), completedExtreme: Boolean(options.completedExtreme),
       rescues: rescueCount, overflow: Boolean(options.overflow) });
     achievementRunMode = null;
-    achievementAir = null;
   }
   function resetGame() {
     settleAchievementRun();
@@ -304,7 +304,17 @@
     player.vy = JUMP_VELOCITY;
     player.jumps += 1;
     if (!achievementAir || fromGround) {
-      achievementAir = { id: ++achievementAirSerial, cleared: [] };
+      if (achievementAir) cancelAchievementAir();
+      achievementAir = {
+        id: ++achievementAirSerial, cleared: [], birds: new Set(), bodyAbove: new Set(),
+        birdStarts: new Map(obstacles.filter((obstacle) => isAerialBird(obstacle.kind))
+          .map((obstacle) => [obstacle, obstacle.x])),
+        groundTakeoff: fromGround && hasGroundSupport(worldX) && Math.abs(player.feetY - GROUND) <= 1,
+        takeoffRight: worldX + 20 * (player.crouch ? 1.17 : 1),
+        maxJumps: player.jumps
+      };
+    } else {
+      achievementAir.maxJumps = Math.max(achievementAir.maxJumps, player.jumps);
     }
     sound.jump(player.jumps === 2);
     player.grounded = false;
@@ -523,6 +533,9 @@
     const gap = makeObstacle('gap', gapX, Math.round(targetSpeed * .73), { pillarScene: true });
     const pillar = makeObstacle('skyPillar', gapX + Math.round(targetSpeed * .26),
       Math.round(Math.max(22, targetSpeed * .027)));
+    // The cliff and its pillar form one obstacle for warning streaks.
+    gap.scenePillar = pillar;
+    pillar.sceneGap = gap;
     addObstacles(gap, pillar);
     if (includeFollowup && Math.random() < .10 + pressure * .16) {
       const brambleX = gapX + gap.width + targetSpeed * (.82 - pressure * .14);
@@ -866,7 +879,7 @@
   }
   function startJetpack() {
     jetpackActive = true;
-    achievementAir = null;
+    cancelAchievementAir();
     jetpackStartX = worldX;
     jetpackStartY = player.feetY;
     jetpackPickups = []; shieldPickups = [];
@@ -899,57 +912,22 @@
       // The blast fills the current cliff. Restore the player here without skipping distance.
       player = { feetY: GROUND, vy: 0, jumps: 0, crouch: false, grounded: true, diving: false };
     }
-    achievementAir = null;
+    cancelAchievementAir();
     triggerBlast(false, 'rescue');
   }
   const isAerialBird = (kind) => kind === 'duck' || kind === 'movingHigh' || kind === 'giantHover';
   function achievementState(obstacle) {
     if (!obstacle.achievement) obstacle.achievement = {
       seen: false, recorded: false, warned: false, airId: null, mixedAir: false,
-      airborne: false, maxJumps: 0, above: true, deep: false, dived: false, escaped: false
+      airborne: false, maxJumps: 0, birdOver: false,
+      birdSingle: false, birdResultRecorded: false, birdPending: false,
+      deep: false, dived: false, escaped: false
     };
     return obstacle.achievement;
   }
-  function outlineTopInRange(points, left, right) {
-    let top = Infinity;
-    for (let index = 0; index < points.length; index++) {
-      const a = points[index];
-      const b = points[(index + 1) % points.length];
-      if (a[0] >= left && a[0] <= right) top = Math.min(top, a[1]);
-      for (const boundary of [left, right]) {
-        if ((a[0] < boundary && b[0] > boundary) || (a[0] > boundary && b[0] < boundary)) {
-          top = Math.min(top, a[1] + (b[1] - a[1]) * (boundary - a[0]) / (b[0] - a[0]));
-        }
-      }
-    }
-    return top;
-  }
-  function giantBirdAbovePlayer(obstacle, boxes) {
-    const cx = obstacle.x + obstacle.width * .53;
-    const cy = GROUND + birdStyles[obstacle.kind].center;
-    const radiusX = obstacle.width * .30;
-    const contours = Object.values(giantBirdParts(obstacle))
-      .flatMap((part) => Array.isArray(part) ? part : [part])
-      .map((part) => outlinePoints(part, 20).map(([x, y]) => [cx + x, cy + y]));
-    return boxes.every((box) => {
-      let top = Infinity;
-      if (box.right > cx - radiusX && box.left < cx + radiusX) {
-        const x = Math.max(box.left, Math.min(cx, box.right));
-        top = cy - 28 * Math.sqrt(Math.max(0, 1 - ((x - cx) / radiusX) ** 2));
-      }
-      for (const points of contours) top = Math.min(top, outlineTopInRange(points, box.left, box.right));
-      return box.bottom <= top + 3;
-    });
-  }
-  function aerialBirdTop(obstacle) {
-    const centerY = GROUND + birdStyles[obstacle.kind].center;
-    const tipY = highBirdWingTip(obstacle);
-    return centerY + Math.min(-12, ...highBirdWingPoints(0, tipY).map(([, y]) => y));
-  }
-  function trackAchievementObstacles(boxes) {
+  function trackAchievementObstacles() {
     const left = worldX - 35;
     const right = worldX + 49;
-    const playerBottom = Math.max(...boxes.map((box) => box.bottom));
     for (const obstacle of obstacles) {
       const state = obstacle.achievement;
       if (isGapKind(obstacle.kind) && state?.deep && player.grounded
@@ -962,13 +940,16 @@
         else if (current.airId !== achievementAir.id) current.mixedAir = true;
         current.airborne = true;
         current.maxJumps = Math.max(current.maxJumps, player.jumps);
-      }
-      if (isAerialBird(obstacle.kind)
-        && (!achievementAir || player.grounded || jetpackActive
-          || (obstacle.kind === 'giantHover'
-            ? !giantBirdAbovePlayer(obstacle, boxes)
-            : playerBottom > aerialBirdTop(obstacle) + 3))) {
-        current.above = false;
+        if (isAerialBird(obstacle.kind)) {
+          achievementAir.birds.add(obstacle);
+          if (!achievementAir.birdStarts.has(obstacle)) {
+            achievementAir.birdStarts.set(obstacle, obstacle.x);
+          }
+          // Crossing beneath the bird must not count as leaping over it.
+          if (player.feetY <= GROUND + birdStyles[obstacle.kind].center - 12) {
+            achievementAir.bodyAbove.add(obstacle);
+          }
+        }
       }
       if (isGapKind(obstacle.kind) && isOpenGap(obstacle)
         && worldX > obstacle.x && worldX < obstacle.x + obstacle.width) {
@@ -981,18 +962,29 @@
     if (state.recorded) return;
     if (state.seen && obstacle.kind === 'tallThorn') achievements.record('highThornResult', { single: false });
     if (state.seen && isAerialBird(obstacle.kind)) {
-      achievements.record('birdResult', { over: false,
-        small: obstacle.kind !== 'giantHover', single: false });
+      recordAchievementBirdResult(obstacle);
     }
     if (state.seen && isGapKind(obstacle.kind)) {
       achievements.record('cliffResult', { kind: obstacle.pillarScene ? 'skyPillar' : obstacle.kind,
         recovered: false, dived: false });
     }
-    if (state.warned) achievements.record('warningFail');
+    recordAchievementObstacleResult(obstacle, false);
     state.recorded = true;
   }
+  function recordAchievementObstacleResult(obstacle, cleared) {
+    const scene = obstacle.sceneGap || obstacle;
+    if (scene.achievementOutcomeRecorded) return;
+    if (obstacle.sceneGap && cleared) return; // Wait for the far edge of the whole pillar cliff.
+    const warningSource = scene.scenePillar || obstacle;
+    achievements.record('obstacleResult', {
+      warned: warningSource.achievement?.warned === true,
+      cleared
+    });
+    scene.achievementOutcomeRecorded = true;
+  }
   function clearAchievementObstacles() {
-    for (const obstacle of obstacles) {
+    for (const obstacle of [...obstacles].sort((a, b) =>
+      a.x + a.width - b.x - b.width)) {
       const state = obstacle.achievement;
       if (!state?.seen || state.recorded || obstacle.x + obstacle.width >= worldX - 35) continue;
       if (isGapKind(obstacle.kind) && state.deep && !state.escaped && !player.grounded) continue;
@@ -1002,26 +994,56 @@
           && state.maxJumps === 1 });
         highKind = 'thorn';
       } else if (isAerialBird(obstacle.kind)) {
-        const over = state.airborne && !state.mixedAir && state.above;
-        const small = obstacle.kind !== 'giantHover';
-        achievements.record('birdResult', { over, small, single: over && state.maxJumps === 1 });
-        if (over && small) highKind = 'bird';
+        if (achievementAir?.birds.has(obstacle)) state.birdPending = true;
+        else recordAchievementBirdResult(obstacle);
+        if (state.birdOver && obstacle.kind !== 'giantHover') highKind = 'bird';
       } else if (isGapKind(obstacle.kind)) {
         achievements.record('cliffResult', { kind: obstacle.pillarScene ? 'skyPillar' : obstacle.kind,
           recovered: state.deep && state.escaped, dived: state.deep && state.escaped && state.dived });
       }
-      if (state.warned) achievements.record('warningClear');
+      recordAchievementObstacleResult(obstacle, true);
       if (achievementAir && state.airId === achievementAir.id && state.airborne && !state.mixedAir) {
-        achievementAir.cleared.push({ kind: obstacle.kind, highKind });
+        achievementAir.cleared.push({ kind: obstacle.kind, highKind, obstacle });
       }
       state.recorded = true;
     }
   }
+  function recordAchievementBirdResult(obstacle) {
+    const state = achievementState(obstacle);
+    if (state.birdResultRecorded) return;
+    achievements.record('birdResult', { over: state.birdOver,
+      small: obstacle.kind !== 'giantHover', single: state.birdOver && state.birdSingle });
+    state.birdResultRecorded = true;
+    state.birdPending = false;
+  }
+  function cancelAchievementAir() {
+    if (!achievementAir) return;
+    for (const bird of achievementAir.birds) {
+      if (!achievementState(bird).birdResultRecorded) recordAchievementBirdResult(bird);
+    }
+    achievementAir = null;
+  }
   function finishAchievementAir() {
     if (!achievementAir) return;
+    const landingLeft = worldX - 11 * (player.crouch ? 1.17 : 1);
+    for (const bird of achievementAir.birds) {
+      const state = achievementState(bird);
+      if (!state.birdResultRecorded && achievementAir.groundTakeoff
+        && achievementAir.takeoffRight <= achievementAir.birdStarts.get(bird)
+        && landingLeft >= bird.x + bird.width && achievementAir.bodyAbove.has(bird)) {
+        state.birdOver = true;
+        state.birdSingle = achievementAir.maxJumps === 1;
+        recordAchievementBirdResult(bird);
+        if (!achievementAir.cleared.some((item) => item.obstacle === bird)) {
+          achievementAir.cleared.push({ kind: bird.kind, highKind: bird.kind === 'giantHover' ? null : 'bird', obstacle: bird });
+        }
+      } else if (state.birdPending) recordAchievementBirdResult(bird);
+    }
     if (achievementAir.cleared.length >= 2) {
       achievements.record('airCombo', { obstacles: achievementAir.cleared.length,
-        highKinds: achievementAir.cleared.map((item) => item.highKind).filter(Boolean) });
+        highKinds: achievementAir.cleared.map((item) =>
+          isAerialBird(item.kind) ? item.obstacle.achievement?.birdOver && item.kind !== 'giantHover' ? 'bird' : null
+            : item.highKind).filter(Boolean) });
     }
     achievementAir = null;
   }
@@ -1135,7 +1157,7 @@
       }
     }
     const boxes = playerHitboxes();
-    trackAchievementObstacles(boxes);
+    trackAchievementObstacles();
     if (shieldReady || jetpackActive) shieldPickups = [];
     else if (shieldPickups.some((pickup) => pickupHitsBoxes(pickup, boxes))) {
       shieldReady = true;
@@ -1151,15 +1173,15 @@
     const fell = !invincible && (hitRightCliffWall(boxes) || player.feetY >= FALL_SCREEN_LIMIT);
     const hits = !invincible && !fell && elapsed >= shieldUntil ? obstacles.filter((o) => hitObstacle(o, boxes)) : [];
     const struckPillar = hits.some((o) => o.kind === 'skyPillar');
+    clearAchievementObstacles();
     if (fell) {
       obstacles.filter((o) => isGapKind(o.kind) && isOpenGap(o)
         && worldX >= o.x - 30 && worldX <= o.x + o.width + 80)
         .forEach(achievementFailObstacle);
     }
     hits.forEach(achievementFailObstacle);
-    clearAchievementObstacles();
     if (fell || struckPillar) {
-      achievementAir = null;
+      cancelAchievementAir();
       if (extremeMode || trainingMode) rescue(fell);
       else { endGame(); return; }
     } else if (hits.length) {
@@ -1167,7 +1189,7 @@
         && (hits[0].kind === 'giantGround' || hits[0].kind === 'giantHover')) {
         if (giantBeakBetweenFeet(hits[0], boxes)) achievements.record('beakDeath');
       }
-      achievementAir = null;
+      cancelAchievementAir();
       if (shieldReady) consumeShield();
       else if (extremeMode || trainingMode) rescue(false);
       else { endGame(); return; }

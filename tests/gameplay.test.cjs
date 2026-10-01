@@ -62,7 +62,7 @@ function createGame(randomValues = [], store = {}, trainingKinds = null, trainin
     setPowerupDistance: (meters) => { powerupEpochX = worldX - meters * 10; },
     speedAt, runSpeedAt, runPressure, latePressure, obstacleKind, trainingObstacleKind, obstacleWidth, cliffNeighborKind, makeObstacle, thornModules,
     sceneTallThornSide, spawnObstacle, spawnObstacleGroup, spawnCliffScene, spawnGapPillarScene, spawnRhythmScene,
-    startJetpack, updateJetpack, resetGame, consumeShield,
+    startJetpack, updateJetpack, resetGame, consumeShield, finishAchievementAir,
     jetpackActive: () => jetpackActive,
     jetpackPickups: () => jetpackPickups,
     setJetpackPickups: (items) => { jetpackPickups = items; },
@@ -2109,7 +2109,7 @@ test('clearing high thorns and high birds in one airtime credits the real game e
   assert.equal(groups.find((group) => group.id === 'air').awards[0].unlocked, true);
 });
 
-test('jumping over a hovering giant counts when passing above its local beak and tail outline', () => {
+test('jumping over a hovering giant counts only after landing beyond its projection', () => {
   const game = createGame([], {}, null, 3.2, false, true);
   game.startGame();
   game.player(25000, 320, false);
@@ -2124,10 +2124,60 @@ test('jumping over a hovering giant counts when passing above its local beak and
   }
   assert.equal(game.mode(), 'running');
   assert.equal(bird.achievement?.recorded, true);
+  assert.equal(game.achievements.getView().groups.find((group) => group.id === 'bird')
+    .awards[0].progress, '0/1', 'clearing the bird in midair does not award the badge');
+  for (let frame = 0; frame < 600 && !bird.achievement?.birdResultRecorded; frame++) game.tick(.004);
+  assert.equal(game.playerState().grounded, true);
   game.endGame();
   const bronze = game.achievements.getView().groups.find((group) => group.id === 'bird').awards[0];
   assert.equal(bronze.unlocked, true);
   assert.equal(bronze.progress, '1/1');
+});
+
+test('a moving high bird is credited from its takeoff and landing projections', () => {
+  const game = createGame([], {}, null, 3.2, false, true);
+  game.startGame();
+  game.player(25000, 320, false);
+  const bird = game.makeObstacle('movingHigh', 25450, 68);
+  game.setObstacles([bird]);
+  game.next(Infinity);
+  game.keyDown('Space');
+  let secondJump = false;
+  for (let frame = 0; frame < 500 && !bird.achievement?.birdResultRecorded; frame++) {
+    if (!secondJump && game.elapsed() >= .15) { game.keyDown('Space'); secondJump = true; }
+    game.tick(.004);
+    if (game.mode() !== 'running') break;
+  }
+  assert.equal(game.mode(), 'running');
+  assert.equal(game.playerState().grounded, true);
+  assert.ok(bird.x < 25450, 'the bird flew toward the player during this jump');
+  game.endGame();
+  const bronze = game.achievements.getView().groups.find((group) => group.id === 'bird').awards[0];
+  assert.equal(bronze.progress, '1/1');
+  assert.equal(bronze.unlocked, true);
+});
+
+test('both foot contacts must fall outside the bird projection', () => {
+  for (const caseName of ['landing inside', 'takeoff inside']) {
+    const game = createGame([], {}, null, 3.2, false, true);
+    game.startGame();
+    const bird = game.makeObstacle('duck', 25300, 68);
+    game.setObstacles([bird]);
+    game.next(Infinity);
+    game.player(caseName === 'takeoff inside' ? 25290 : 25000, 320, false);
+    game.keyDown('Space');
+    game.setPlayerState({ feetY: 0, vy: 0, grounded: false, jumps: 1 });
+    for (let frame = 0; frame < 50 && !bird.achievement?.airborne; frame++) game.tick(.016);
+    assert.equal(bird.achievement?.airborne, true, caseName);
+    game.player(caseName === 'landing inside' ? bird.x + bird.width + 10
+      : bird.x + bird.width + 20, 320, false);
+    game.setPlayerState({ grounded: true, jumps: 0, vy: 0 });
+    game.finishAchievementAir();
+    game.endGame();
+    const bronze = game.achievements.getView().groups.find((group) => group.id === 'bird').awards[0];
+    assert.equal(bronze.unlocked, false, caseName);
+    assert.equal(bronze.progress, '0/1', caseName);
+  }
 });
 
 test('ducking under a hovering giant does not count as jumping over it', () => {
@@ -2269,19 +2319,49 @@ test('beak capture follows the visible death frame across different frame durati
   }
 });
 
-test('three separate warning hazards safely passing credit the warning encounter', () => {
+test('a normal obstacle interrupts the three-warning streak', () => {
   const game = createGame([], {}, null, 3.2, false, true);
   game.startGame();
-  game.setObstacles([800, 1300, 1800].map((x) => game.makeObstacle('movingHigh', x, 68)));
+  const birds = [800, 1300, 1800, 2300, 2800]
+    .map((x) => game.makeObstacle('movingHigh', x, 68));
+  game.setObstacles([...birds, game.makeObstacle('cactus', 1600, 42)]
+    .sort((a, b) => a.x - b.x));
   game.next(Infinity);
-  for (let frame = 0; frame < 500 && game.worldPosition() < 2100; frame++) {
+  for (let frame = 0; frame < 500 && !birds[3].achievement?.recorded; frame++) {
     game.setPlayerState({ feetY: 0, vy: 0, grounded: false, jumps: 0 });
     game.tick(.016);
     if (game.mode() !== 'running') break;
   }
   assert.equal(game.mode(), 'running');
+  let warning = game.achievements.getView().groups.find((group) => group.id === 'warning').awards[0];
+  assert.equal(warning.progress, '当前遇到 0 次', 'the cactus breaks the first two-warning chain');
+  for (let frame = 0; frame < 150 && !birds[4].achievement?.recorded; frame++) {
+    game.setPlayerState({ feetY: 0, vy: 0, grounded: false, jumps: 0 });
+    game.tick(.016);
+  }
+  game.endGame();
+  warning = game.achievements.getView().groups.find((group) => group.id === 'warning').awards[0];
+  assert.equal(warning.unlocked, true);
+  assert.equal(warning.progress, '当前遇到 1 次');
+});
+
+test('a pillar and its cliff count as one warned obstacle', () => {
+  const game = createGame([], {}, null, 3.2, false, true);
+  game.startGame();
+  for (let index = 0; index < 3; index++) {
+    game.setObstacles([]);
+    game.next(1000 + index * 1000);
+    game.spawnGapPillarScene(false);
+    const [gap, pillar] = game.obstacles();
+    assert.equal(gap.scenePillar, pillar);
+    gap.achievement = { seen: true, recorded: false };
+    pillar.achievement = { seen: true, recorded: false, warned: true };
+    game.next(Infinity);
+    game.player(gap.x + gap.width + 100, 320, false);
+    game.tick(.004);
+  }
   game.endGame();
   const warning = game.achievements.getView().groups.find((group) => group.id === 'warning').awards[0];
   assert.equal(warning.unlocked, true);
-  assert.equal(warning.progress, '当前遇到 1 次');
+  assert.equal(warning.progress, '当前遇到 1 次', 'each pillar cliff contributes exactly one warning');
 });

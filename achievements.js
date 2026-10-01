@@ -64,7 +64,7 @@
       ['crystal', '水晶', 'crystal-jetpack-cliff.svg', '喷气背包落地时的爆炸填平脚下悬崖']
     ] },
     { id: 'warning', name: '三响从容', category: '奇遇流光', badges: [
-      ['crystal', '水晶', 'crystal-triple-warning.svg', '连续三次遇到警报并平安通过']
+      ['crystal', '水晶', 'crystal-triple-warning.svg', '连续三个障碍均有警报，并全部平安通过']
     ] }
   ];
 
@@ -231,11 +231,12 @@
         break;
       case 'shieldBlastBird': run.lucky.shieldBird++; break;
       case 'jetpackFillGap': run.lucky.jetpackCliff++; break;
-      case 'warningClear':
-        run.warningStreak++;
-        if (run.warningStreak % 3 === 0) run.lucky.warning++;
+      case 'obstacleResult':
+        if (payload.warned === true && payload.cleared === true) {
+          run.warningStreak++;
+          if (run.warningStreak % 3 === 0) run.lucky.warning++;
+        } else run.warningStreak = 0;
         break;
-      case 'warningFail': run.warningStreak = 0; break;
       case 'overflow': if (run.mode === 'classic') run.overflow = true; break;
       default: return;
     }

@@ -108,3 +108,58 @@ test('the catalogue intro does not reveal hidden badge tiers', () => {
   assert.equal(page.includes('每一次漂亮的腾跃'), false);
   assert.equal(page.includes('公开徽章'), false);
 });
+
+test('奇遇流光 shows only earned achievements and an empty invitation until the first unlock', () => {
+  const detail = new Element();
+  const summary = new Element();
+  const groups = [
+    { id: 'classic', name: '逐光行远', category: '逐光之路', awards: [
+      { tier: 'bronze', label: '铜', image: './bronze.svg', requirement: '跑到远方',
+        progress: '0/100', unlocked: false, hidden: false }
+    ] },
+    { id: 'dual', name: '双曜同辉', category: '奇遇流光', awards: [
+      { tier: 'crystal', label: '水晶', image: './crystal.svg', requirement: '连续拾取道具',
+        progress: '遇到 0 次', unlocked: false, hidden: false }
+    ] },
+    { id: 'warning', name: '三响从容', category: '奇遇流光', awards: [
+      { tier: 'crystal', label: '水晶', image: './warning.svg', requirement: '连续通过警报',
+        progress: '遇到 0 次', unlocked: false, hidden: false }
+    ] }
+  ];
+  let rerender;
+  const source = fs.readFileSync(path.join(__dirname, '..', 'achievements-ui.js'), 'utf8');
+  vm.runInNewContext(source, {
+    document: {
+      getElementById: (id) => ({ 'achievement-detail-list': detail,
+        'achievement-progress-summary': summary })[id] || null,
+      createElement: (tag) => new Element(tag),
+      createDocumentFragment: () => new Element('fragment')
+    },
+    window: {
+      DinoAchievements: {
+        getView: () => ({ groups }),
+        subscribe: (listener) => { rerender = listener; }
+      },
+      addEventListener() {}
+    },
+    console
+  });
+
+  let nodes = descendants(detail);
+  assert.equal(nodes.some((item) => item.textContent === '奇遇流光'), true);
+  assert.equal(nodes.some((item) => item.textContent === '暂无成就，快去探索吧！'), true);
+  assert.equal(nodes.filter((item) => item.tagName === 'article').length, 1,
+    'other categories still display locked achievements');
+  assert.equal(nodes.some((item) => item.textContent === '双曜同辉'), false);
+  assert.equal(nodes.some((item) => item.textContent === '三响从容'), false);
+  assert.equal(summary.textContent, '已收藏 0 / 3 枚徽章');
+
+  groups[1].awards[0].unlocked = true;
+  rerender();
+  nodes = descendants(detail);
+  assert.equal(nodes.some((item) => item.textContent === '暂无成就，快去探索吧！'), false);
+  assert.equal(nodes.some((item) => item.textContent === '双曜同辉'), true);
+  assert.equal(nodes.some((item) => item.textContent === '三响从容'), false);
+  assert.equal(nodes.filter((item) => item.tagName === 'article').length, 2);
+  assert.equal(summary.textContent, '已收藏 1 / 3 枚徽章');
+});

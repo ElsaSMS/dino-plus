@@ -279,12 +279,12 @@ test('lucky encounter counters keep occurrences even after the first crystal bad
   api.record('beakDeath');
   api.record('shieldBlastBird');
   api.record('jetpackFillGap');
-  api.record('warningClear');
-  api.record('warningClear');
-  api.record('warningFail');
-  api.record('warningClear');
-  api.record('warningClear');
-  api.record('warningClear');
+  api.record('obstacleResult', { warned: true, cleared: true });
+  api.record('obstacleResult', { warned: true, cleared: true });
+  api.record('obstacleResult', { warned: false, cleared: true });
+  api.record('obstacleResult', { warned: true, cleared: true });
+  api.record('obstacleResult', { warned: true, cleared: true });
+  api.record('obstacleResult', { warned: true, cleared: true });
   assert.equal(award(api, 'dual', 'crystal').unlocked, false);
   api.finishRun({ distance: 100 });
   for (const group of ['dual', 'beak', 'shieldBird', 'jetpackCliff', 'warning']) {
@@ -295,4 +295,26 @@ test('lucky encounter counters keep occurrences even after the first crystal bad
   api.record('beakDeath');
   api.finishRun({ distance: 5 });
   assert.equal(award(api, 'beak', 'crystal').progress, '当前遇到 2 次');
+});
+
+test('three warning hazards must be consecutive obstacle outcomes', () => {
+  const { api } = load();
+  api.startRun('classic');
+  const warning = { warned: true, cleared: true };
+  api.record('obstacleResult', warning);
+  api.record('obstacleResult', warning);
+  api.record('obstacleResult', { warned: false, cleared: true });
+  api.record('obstacleResult', warning);
+  api.record('obstacleResult', warning);
+  api.finishRun({ distance: 100 });
+  assert.equal(award(api, 'warning', 'crystal').unlocked, false);
+  api.startRun('classic');
+  api.record('obstacleResult', warning);
+  api.record('obstacleResult', { warned: true, cleared: false });
+  api.record('obstacleResult', warning);
+  api.record('obstacleResult', warning);
+  api.record('obstacleResult', warning);
+  api.finishRun({ distance: 100 });
+  assert.equal(award(api, 'warning', 'crystal').unlocked, true);
+  assert.equal(award(api, 'warning', 'crystal').progress, '当前遇到 1 次');
 });

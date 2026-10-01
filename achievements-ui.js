@@ -65,13 +65,16 @@
     let unlocked = 0;
 
     for (const group of groups) {
-      const awards = (group.awards || []).filter(award => !award.hidden);
-      if (!awards.length) continue;
+      const publicAwards = (group.awards || []).filter(award => !award.hidden);
+      if (!publicAwards.length) continue;
       const category = group.category || '旅途成就';
+      const awards = category === '奇遇流光'
+        ? publicAwards.filter(award => award.unlocked)
+        : publicAwards;
       if (!categories.has(category)) categories.set(category, []);
-      categories.get(category).push({ group, awards });
-      available += awards.length;
-      unlocked += awards.filter(award => award.unlocked).length;
+      if (awards.length) categories.get(category).push({ group, awards });
+      available += publicAwards.length;
+      unlocked += publicAwards.filter(award => award.unlocked).length;
     }
 
     const fragment = document.createDocumentFragment();
@@ -80,6 +83,11 @@
       const heading = node('div', 'achievement-category-heading');
       heading.append(node('h2', '', category));
       section.append(heading);
+      if (category === '奇遇流光' && !entries.length) {
+        section.append(node('p', 'achievement-detail-empty', '暂无成就，快去探索吧！'));
+        fragment.append(section);
+        continue;
+      }
       const grid = node('div', 'achievement-group-grid');
 
       for (const { group, awards } of entries) {
