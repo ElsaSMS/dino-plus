@@ -5,10 +5,11 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 const source = fs.readFileSync(path.join(__dirname, '..', 'game.js'), 'utf8');
-const startup = '  updateAudioControls(); updateProfileUI(); fillObstacles(); draw(); requestAnimationFrame(frame);';
+const startup = '  initializeGame();';
 assert.ok(source.includes(startup), 'game test hook location changed');
 
-function createGame(randomValues = [], store = {}, trainingKinds = null, trainingMultiplier = 3.2, overflowPreview = false, withAchievements = false) {
+function createGame(randomValues = [], store = {}, trainingKinds = null, trainingMultiplier = 3.2,
+  overflowPreview = false, withAchievements = false, sessionStore = {}) {
   const drawCalls = [];
   const canvasContext = new Proxy({}, {
     get: (_, key) => key === 'createLinearGradient' || key === 'createRadialGradient'
@@ -35,9 +36,12 @@ function createGame(randomValues = [], store = {}, trainingKinds = null, trainin
     }
     return elements.get(id);
   };
+  const documentListeners = {};
   const documentMock = {
     activeElement: { tagName: 'BODY' },
-    getElementById: getElement, addEventListener() {}, createElement: () => ({ ...element })
+    getElementById: getElement,
+    addEventListener(type, callback) { (documentListeners[type] ||= []).push(callback); },
+    createElement: () => ({ ...element })
   };
   element.blur = () => { documentMock.activeElement = { tagName: 'BODY' }; };
   const windowListeners = {};
@@ -48,7 +52,11 @@ function createGame(randomValues = [], store = {}, trainingKinds = null, trainin
   const sandbox = {
     Math: randomMath,
     document: documentMock,
+    requestAnimationFrame() {},
     window: { addEventListener: (type, listener) => { windowListeners[type] = listener; },
+      sessionStorage: { getItem: (key) => sessionStore[key] ?? null,
+        setItem: (key, value) => { sessionStore[key] = value; },
+        removeItem: (key) => { delete sessionStore[key]; } },
       ...(overflowPreview ? { DinoOverflowDemo: true } : {}),
       ...(trainingKinds ? { DinoTraining: { selectedKinds: () => trainingKinds,
         speedMultiplier: () => trainingMultiplier } } : {}) },
@@ -62,7 +70,7 @@ function createGame(randomValues = [], store = {}, trainingKinds = null, trainin
     setPowerupDistance: (meters) => { powerupEpochX = worldX - meters * 10; },
     speedAt, runSpeedAt, runPressure, latePressure, obstacleKind, trainingObstacleKind, obstacleWidth, cliffNeighborKind, makeObstacle, thornModules,
     sceneTallThornSide, spawnObstacle, spawnObstacleGroup, spawnCliffScene, spawnGapPillarScene, spawnRhythmScene,
-    startJetpack, updateJetpack, resetGame, consumeShield, finishAchievementAir,
+    startJetpack, updateJetpack, resetGame, consumeShield, finishAchievementAir, initializeGame, frame,
     jetpackActive: () => jetpackActive,
     jetpackPickups: () => jetpackPickups,
     setJetpackPickups: (items) => { jetpackPickups = items; },
@@ -108,11 +116,12 @@ function createGame(randomValues = [], store = {}, trainingKinds = null, trainin
   vm.createContext(sandbox);
   if (withAchievements) vm.runInContext(fs.readFileSync(path.join(__dirname, '../achievements.js'), 'utf8'), sandbox);
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../visual-models/models.js'), 'utf8'), sandbox);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../run-session.js'), 'utf8'), sandbox);
   vm.runInContext(source.replace(startup, hook), sandbox, { filename: 'game.js' });
   return {
     ...sandbox.gameTest,
     achievements: sandbox.window.DinoAchievements,
-    store, element: getElement,
+    store, sessionStore, element: getElement,
     drawCalls,
     resetTraining: () => sandbox.window.DinoTraining?.resetRun(),
     setTrainingMultiplier: (value) => { trainingMultiplier = value; },
@@ -125,7 +134,19 @@ function createGame(randomValues = [], store = {}, trainingKinds = null, trainin
     keyUp: (code) => windowListeners.keyup({ code }),
     blur: () => windowListeners.blur(),
     pagehide: () => windowListeners.pagehide?.(),
+    beforeunload: () => windowListeners.beforeunload?.(),
     pageshow: (persisted) => windowListeners.pageshow?.({ persisted }),
+    linkClick: (href, options = {}) => {
+      const anchor = { getAttribute: (name) => name === 'href' ? href : null,
+        target: '_self' };
+      const event = { defaultPrevented: false, button: 0, ...options,
+        preventDefault() { this.defaultPrevented = true; },
+        target: { closest: (selector) => selector === 'a[href]' ? anchor : null } };
+      for (const listener of documentListeners.click || []) listener(event);
+      return event;
+    },
+    visibility: (hidden) => { documentMock.hidden = hidden;
+      for (const listener of documentListeners.visibilitychange || []) listener(); },
     focus: (tagName) => { documentMock.activeElement = tagName === 'start-button'
       ? getElement('start-button') : { tagName }; },
     activeTag: () => documentMock.activeElement.tagName
@@ -229,7 +250,7 @@ test('local training keeps moving-bird-only selections after a rescue warning de
   assert.ok(game.obstacles().every((obstacle) => obstacle.kind === 'movingHigh'));
 });
 
-test('extreme: mode controls reset the run and record HUD; normal records remain intact', () => {
+test('extreme: mode controls keep records and reset only when requested', () => {
   const game = createGame();
   game.element('extreme-mode').click();
   assert.equal(game.extremeMode(), true);
@@ -263,6 +284,47 @@ test('extreme: mode controls reset the run and record HUD; normal records remain
   game.endGame();
   assert.equal(game.profileState().best, 100, 'classic records still save after switching back');
   assert.equal(game.profileState().extremeBest, null);
+});
+
+test('switching classic and extreme pauses and preserves each live run independently', () => {
+  const game = createGame([], {}, null, 3.2, false, true);
+  game.startGame();
+  game.player(12000, 240, false);
+  game.setPlayerState({ grounded: false, vy: -120, jumps: 1 });
+  game.setObstacles([game.makeObstacle('duck', 12600, 68)]);
+  game.next(Infinity);
+  game.setShieldReady(true);
+  game.element('extreme-mode').click();
+  assert.equal(game.mode(), 'ready');
+  assert.equal(game.extremeMode(), true);
+  assert.equal(game.achievements.snapshotRun(), null, 'classic achievements are parked, not finished');
+
+  game.startGame();
+  game.player(55555, 320, false);
+  game.setRescues(7);
+  game.setObstacles([game.makeObstacle('cactus', 56000, 42)]);
+  game.next(Infinity);
+  game.element('classic-mode').click();
+  assert.equal(game.mode(), 'paused');
+  assert.equal(game.extremeMode(), false);
+  assert.equal(game.worldPosition(), 12000);
+  assert.equal(game.playerState().feetY, 240);
+  assert.equal(game.playerState().vy, -120);
+  assert.equal(game.obstacles()[0].kind, 'duck');
+  assert.equal(game.nextPosition(), Infinity);
+  assert.equal(game.shieldReady(), true);
+  assert.equal(game.achievements.snapshotRun().mode, 'classic');
+  game.frame(1000); game.frame(2000);
+  assert.equal(game.worldPosition(), 12000, 'the paused course does not advance');
+
+  game.element('start-button').click();
+  assert.equal(game.mode(), 'running');
+  game.element('extreme-mode').click();
+  assert.equal(game.mode(), 'paused');
+  assert.equal(game.worldPosition(), 55555);
+  assert.equal(game.rescueCount(), 7);
+  assert.equal(game.obstacles()[0].kind, 'cactus');
+  assert.equal(game.achievements.snapshotRun().mode, 'extreme');
 });
 
 test('extreme: complete runs persist the minimum rescue count, including zero, under one renameable profile', () => {
@@ -2014,7 +2076,7 @@ test('local demo uses the real classic game from 2147483000m without hazards or 
   assert.equal(game.worldPosition(), 2147483000 * 10);
 });
 
-test('achievement settlement records manual reset and page reload exactly once', () => {
+test('achievement settlement records manual reset and a true page reload exactly once', () => {
   const game = createGame([], {}, null, 3.2, false, true);
   const award = (tier) => game.achievements.getView().groups.find((group) => group.id === 'classic')
     .awards.find((item) => item.tier === tier);
@@ -2030,6 +2092,109 @@ test('achievement settlement records manual reset and page reload exactly once',
   game.resetGame();
   assert.equal(award('silver').unlocked, true);
   assert.equal(award('gold').progress, '60002/1000000');
+});
+
+test('visiting the achievement catalogue parks a classic run and resumes its pending achievements', () => {
+  const store = {};
+  const sessionStore = {};
+  const achievementKey = 'elsasms.dino-plus.v1.achievements';
+  const game = createGame([], store, null, 3.2, false, true, sessionStore);
+  game.initializeGame();
+  game.startGame();
+  game.player(145000, 320, false);
+  game.setObstacles([game.makeObstacle('cactus', 145700, 42)]);
+  game.next(Infinity);
+  game.setShieldReady(true);
+  game.achievements.record('highThornResult', { single: true });
+  assert.equal(game.achievements.snapshotRun().thornSingle, 1);
+
+  game.linkClick('./achievements.html');
+  assert.equal(game.mode(), 'paused', 'leaving through the detail link pauses immediately');
+  game.pagehide();
+  assert.equal(game.achievements.snapshotRun().thornSingle, 1,
+    'opening the catalogue must not settle the run');
+  assert.equal(JSON.parse(store[achievementKey]).thorn.total, 0);
+  game.pageshow(true);
+  assert.equal(game.mode(), 'paused', 'a back-forward cache return remains paused');
+  assert.equal(game.worldPosition(), 145000);
+
+  const returned = createGame([], store, null, 3.2, false, true, sessionStore);
+  returned.initializeGame();
+  assert.equal(returned.mode(), 'paused');
+  assert.equal(returned.extremeMode(), false);
+  assert.equal(returned.worldPosition(), 145000);
+  assert.equal(returned.obstacles()[0].kind, 'cactus');
+  assert.equal(returned.nextPosition(), Infinity);
+  assert.equal(returned.shieldReady(), true);
+  assert.equal(returned.achievements.snapshotRun().thornSingle, 1);
+  returned.frame(1000); returned.frame(2000);
+  assert.equal(returned.worldPosition(), 145000, 'the restored course remains still until resumed');
+  returned.element('start-button').click();
+  assert.equal(returned.mode(), 'running');
+  returned.achievements.record('highThornResult', { single: true });
+  returned.endGame();
+  assert.equal(JSON.parse(store[achievementKey]).thorn.total, 2,
+    'the two actions count in one run without losing or duplicating progress');
+});
+
+test('a failed session save keeps the paused run on the game page', () => {
+  const blockedStore = new Proxy({}, { set() { throw new Error('storage quota'); } });
+  const game = createGame([], {}, null, 3.2, false, true, blockedStore);
+  game.initializeGame();
+  game.startGame();
+  game.player(24680, 320, false);
+  const click = game.linkClick('./achievements.html');
+  assert.equal(click.defaultPrevented, true);
+  assert.equal(game.mode(), 'paused');
+  assert.equal(game.worldPosition(), 24680);
+  assert.match(game.element('overlay-copy').textContent, /无法保存当前进度/);
+  game.element('start-button').click();
+  assert.equal(game.mode(), 'running');
+  assert.equal(game.worldPosition(), 24680);
+});
+
+test('a trip through training keeps the extreme run and returns to that paused mode', () => {
+  const store = {};
+  const sessionStore = {};
+  const game = createGame([], store, null, 3.2, false, true, sessionStore);
+  game.initializeGame();
+  game.element('extreme-mode').click();
+  game.startGame();
+  game.player(52000, 320, false);
+  game.setRescues(4);
+  game.setObstacles([game.makeObstacle('movingLow', 52600, 68)]);
+  game.next(Infinity);
+  game.linkClick('./training.html');
+  assert.equal(game.mode(), 'paused');
+  game.pagehide();
+
+  const training = createGame([], store, ['cactus'], 3.2, false, true, sessionStore);
+  training.initializeGame();
+  assert.equal(training.trainingMode(), true);
+  training.startGame();
+  training.player(9000, 320, false);
+  training.linkClick('./index.html');
+  assert.equal(training.mode(), 'paused');
+  training.pagehide();
+
+  const returned = createGame([], store, null, 3.2, false, true, sessionStore);
+  returned.initializeGame();
+  assert.equal(returned.extremeMode(), true);
+  assert.equal(returned.mode(), 'paused');
+  assert.equal(returned.worldPosition(), 52000);
+  assert.equal(returned.rescueCount(), 4);
+  assert.equal(returned.obstacles()[0].kind, 'movingLow');
+  assert.equal(returned.nextPosition(), Infinity);
+  returned.element('start-button').click();
+  assert.equal(returned.mode(), 'running');
+  assert.equal(returned.worldPosition(), 52000);
+  returned.linkClick('./training.html');
+  returned.pagehide();
+  const trainingAgain = createGame([], store, ['cactus'], 3.2, false, true, sessionStore);
+  trainingAgain.initializeGame();
+  assert.equal(trainingAgain.mode(), 'paused');
+  assert.equal(trainingAgain.worldPosition(), 9000,
+    'the training run also stays parked until the player resumes it');
 });
 
 test('restoring a cached game page returns to the start after settling its old run', () => {

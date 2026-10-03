@@ -318,3 +318,87 @@ test('three warning hazards must be consecutive obstacle outcomes', () => {
   assert.equal(award(api, 'warning', 'crystal').unlocked, true);
   assert.equal(award(api, 'warning', 'crystal').progress, '当前遇到 1 次');
 });
+
+test('an active run survives a JSON snapshot and settles its progress only once', () => {
+  const store = {};
+  const first = load(store).api;
+  first.noteNameSaved();
+  first.startRun('classic', 'explorer');
+  first.record('highThornResult', { single: true });
+  first.record('birdResult', { over: true, small: true, single: true });
+  for (const pair of ['thorn-thorn', 'thorn-bird', 'bird-thorn']) {
+    first.record('airCombo', { obstacles: 2, highKinds: pair.split('-') });
+  }
+  for (const kind of ['gap', 'collapseGap']) {
+    first.record('cliffResult', { kind, recovered: true, dived: true });
+  }
+  first.record('pickup', { kind: 'shield', seconds: 2 });
+  first.record('obstacleResult', { warned: true, cleared: true });
+  first.record('obstacleResult', { warned: true, cleared: true });
+  const snapshot = JSON.parse(JSON.stringify(first.snapshotRun()));
+  assert.equal(snapshot.mode, 'classic');
+  assert.deepEqual(snapshot.airPairs, ['thorn-thorn', 'thorn-bird', 'bird-thorn']);
+  assert.deepEqual(snapshot.cliffRecovered, ['gap', 'collapseGap']);
+  assert.equal(snapshot.warningStreak, 2);
+  assert.equal(JSON.parse(store[KEY]).classic.total, 0);
+
+  first.restoreRun(null);
+  assert.equal(first.snapshotRun(), null);
+  assert.equal(award(first, 'thorn', 'bronze').progress, '0/1');
+  const second = load(store).api;
+  assert.equal(second.restoreRun(snapshot, 'classic'), true);
+  assert.equal(second.snapshotRun().lastPickup.seconds, 2);
+  assert.equal(award(second, 'thorn', 'bronze').progress, '1/1');
+  assert.equal(award(second, 'outfit', 'wood').unlocked, false);
+  second.record('highThornResult', { single: true });
+  second.record('airCombo', { obstacles: 2, highKinds: ['bird', 'bird'] });
+  second.record('cliffResult', { kind: 'skyPillar', recovered: true, dived: true });
+  second.record('pickup', { kind: 'jetpack', seconds: 2.6 });
+  second.record('obstacleResult', { warned: true, cleared: true });
+  second.finishRun({ distance: 600 });
+  second.finishRun({ distance: 999999 });
+  assert.equal(second.snapshotRun(), null);
+  assert.equal(award(second, 'classic', 'gold').progress, '600/1000000');
+  assert.equal(award(second, 'thorn', 'gold').progress, '2/100');
+  assert.equal(award(second, 'bird', 'silver').progress, '1/50');
+  assert.equal(award(second, 'air', 'hidden').unlocked, true);
+  assert.equal(award(second, 'cliff', 'silver').unlocked, true);
+  assert.equal(award(second, 'dual', 'crystal').progress, '当前遇到 1 次');
+  assert.equal(award(second, 'warning', 'crystal').progress, '当前遇到 1 次');
+  assert.equal(JSON.parse(store[KEY]).outfitsStarted.length, 1);
+});
+
+test('restoreRun rejects corrupt or wrong-mode snapshots without replacing the current run', () => {
+  const { api, store } = load();
+  api.startRun('extreme', 'explorer');
+  api.record('highThornResult', { single: true });
+  const saved = api.snapshotRun();
+  assert.equal(api.restoreRun(saved, 'classic'), false);
+  assert.equal(api.restoreRun({ ...saved, airPairs: ['not-a-pair'] }, 'extreme'), false);
+  assert.equal(api.restoreRun({ ...saved, lucky: { ...saved.lucky, warning: -1 } }, 'extreme'), false);
+  assert.equal(api.snapshotRun().thornSingle, 1);
+  const cumulativeBeforeDetach = store[KEY];
+  assert.equal(api.restoreRun(null), true);
+  assert.equal(api.snapshotRun(), null);
+  assert.equal(store[KEY], cumulativeBeforeDetach);
+  assert.equal(api.restoreRun(saved, 'extreme'), true);
+  assert.equal(api.snapshotRun().thornSingle, 1);
+});
+
+test('a suspended game run sees achievements earned on another page without losing its own progress', () => {
+  const store = {};
+  const game = load(store).api;
+  const training = load(store).api;
+  game.startRun('classic');
+  game.record('highThornResult', { single: true });
+  const snapshot = JSON.parse(JSON.stringify(game.snapshotRun()));
+  training.startRun('training');
+  training.finishRun({ distance: 25 });
+  game.refresh();
+  assert.equal(award(game, 'training', 'wood').unlocked, true);
+  assert.equal(award(game, 'thorn', 'bronze').progress, '1/1');
+  game.restoreRun(null);
+  assert.equal(game.restoreRun(snapshot, 'classic'), true);
+  assert.equal(award(game, 'training', 'wood').unlocked, true);
+  assert.equal(award(game, 'thorn', 'bronze').progress, '1/1');
+});

@@ -163,3 +163,44 @@ test('奇遇流光 shows only earned achievements and an empty invitation until 
   assert.equal(nodes.filter((item) => item.tagName === 'article').length, 2);
   assert.equal(summary.textContent, '已收藏 1 / 3 枚徽章');
 });
+
+test('the catalogue displays progress from the paused main-game run', () => {
+  const detail = new Element();
+  const group = { id: 'thorn', name: '万里归途', category: '旅途成就', awards: [
+    { tier: 'bronze', label: '铜', image: './bronze.svg', requirement: '越过荆棘',
+      progress: '0/3', unlocked: false, hidden: false }
+  ] };
+  let restored = false;
+  const session = { achievementRunMode: 'extreme', achievementRun: { version: 1, mode: 'extreme' } };
+  const sandbox = {
+    document: {
+      getElementById: (id) => id === 'achievement-detail-list' ? detail : null,
+      createElement: (tag) => new Element(tag),
+      createDocumentFragment: () => new Element('fragment')
+    },
+    window: {
+      DinoAchievements: {
+        getView: () => ({ groups: [group] }),
+        restoreRun: (snapshot, mode) => {
+          assert.equal(snapshot, session.achievementRun);
+          assert.equal(mode, 'extreme');
+          restored = true;
+          group.awards[0].progress = '2/3';
+          return true;
+        }
+      },
+      DinoRunSessions: { create: (key) => {
+        assert.equal(key, 'elsasms.dino-plus.v1.run-sessions.v1');
+        return { getMainMode: () => 'extreme', get: () => session };
+      } },
+      addEventListener() {}
+    },
+    console
+  };
+  const source = fs.readFileSync(path.join(__dirname, '..', 'achievements-ui.js'), 'utf8');
+  vm.runInNewContext(source, sandbox);
+  assert.equal(restored, true);
+  assert.equal(descendants(detail).some((node) => node.textContent === '2/3'), true);
+  const page = fs.readFileSync(path.join(__dirname, '..', 'achievements.html'), 'utf8');
+  assert.ok(page.indexOf('run-session.js') < page.indexOf('achievements-ui.js'));
+});

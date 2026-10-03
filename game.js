@@ -72,8 +72,12 @@
   };
   const achievements = (!overflowDemo && window.DinoAchievements) || {
     startRun: noSound, record: noSound, finishRun: noSound,
-    noteNameSaved: noSound
+    noteNameSaved: noSound, snapshotRun: () => null, restoreRun: () => true
   };
+  const runSessions = overflowDemo ? null
+    : (window.DinoRunSessions?.create(`${STORAGE_PREFIX}run-sessions.v1`) ?? null);
+  const volatileSlots = new Map();
+  const currentSlot = () => trainingMode ? 'training' : extremeMode ? 'extreme' : 'classic';
   function updateAudioControls() {
     const { muted, musicVolume, effectsVolume } = sound.settings();
     ui.audioToggle.setAttribute('aria-pressed', String(!muted));
@@ -237,6 +241,80 @@
     ui.pauseButton.textContent = mode === 'paused' ? '继续' : '暂停';
     if (mode !== 'running') ui.warning.hidden = true;
   }
+  function captureRunState() {
+    return {
+      version: 1, slot: currentSlot(), mode: mode === 'running' ? 'paused' : mode,
+      worldX, speed, elapsed, player, obstacles, nextObstacleX,
+      shieldPickups, jetpackPickups, shieldReady, shieldUntil, shieldBufferUntil,
+      shieldWarningSpawnAfter, shieldRecoverySpawnPending, shieldWarningSpawnPending,
+      shieldBreakAt, shieldBreakX, shieldBreakY, shieldDebris, blastColorful, blastCause,
+      jetpackActive, jetpackStartX, jetpackStartY, jetpackLandingGap,
+      lastShieldDropX, lastJetpackDropX, powerupEpochX,
+      highScoreFlash, recordCelebrated, rescueCount,
+      achievementAir, achievementAirSerial, achievementRunMode,
+      achievementRun: achievements.snapshotRun?.() ?? null,
+      distanceText: ui.distance.textContent,
+      overlay: { kicker: ui.kicker.textContent, title: ui.title.textContent,
+        copy: ui.copy.textContent, button: ui.startLabel.textContent }
+    };
+  }
+  function saveRunSlot() {
+    if (overflowDemo) return true;
+    const slot = currentSlot();
+    const snapshot = captureRunState();
+    volatileSlots.set(slot, snapshot);
+    const saved = runSessions?.set(slot, snapshot) === true;
+    return trainingMode ? saved : runSessions?.setMainMode(slot) === true && saved;
+  }
+  function forgetRunSlot(slot = currentSlot()) {
+    volatileSlots.delete(slot);
+    runSessions?.clear(slot);
+  }
+  function restoreRunSlot(slot) {
+    const snapshot = volatileSlots.get(slot) || runSessions?.get(slot);
+    if (!snapshot) return false;
+    if (snapshot.version !== 1 || snapshot.slot !== slot
+      || !['ready', 'paused', 'over', 'overflow'].includes(snapshot.mode)
+      || !Number.isFinite(snapshot.worldX) || snapshot.worldX < 0
+      || !Number.isFinite(snapshot.elapsed) || snapshot.elapsed < 0
+      || !Number.isFinite(snapshot.speed) || snapshot.speed <= 0
+      || !snapshot.player || typeof snapshot.player !== 'object'
+      || !Array.isArray(snapshot.obstacles) || !Array.isArray(snapshot.shieldPickups)
+      || !Array.isArray(snapshot.jetpackPickups)
+      || (snapshot.achievementRunMode !== null && snapshot.achievementRunMode !== slot)
+      || (snapshot.achievementRunMode === null) !== (snapshot.achievementRun === null)
+      || !achievements.restoreRun?.(snapshot.achievementRun, slot)) {
+      forgetRunSlot(slot);
+      return false;
+    }
+    ({ worldX, speed, elapsed, player, obstacles, nextObstacleX,
+      shieldPickups, jetpackPickups, shieldReady, shieldUntil, shieldBufferUntil,
+      shieldWarningSpawnAfter, shieldRecoverySpawnPending, shieldWarningSpawnPending,
+      shieldBreakAt, shieldBreakX, shieldBreakY, shieldDebris, blastColorful, blastCause,
+      jetpackActive, jetpackStartX, jetpackStartY, jetpackLandingGap,
+      lastShieldDropX, lastJetpackDropX, powerupEpochX,
+      highScoreFlash, recordCelebrated, rescueCount,
+      achievementAir, achievementAirSerial, achievementRunMode } = snapshot);
+    downKeys.clear(); touchDownHeld = false; player.crouch = false;
+    lastFrame = 0;
+    sound.ready();
+    sound.jetpack(jetpackActive);
+    setMode(snapshot.mode);
+    ui.distance.textContent = snapshot.distanceText || padded(score());
+    ui.warning.hidden = true;
+    if (ui.whiteout) ui.whiteout.hidden = snapshot.mode !== 'overflow';
+    if (snapshot.mode === 'overflow') {
+      modeReset.hidden = false; modeReset.disabled = false;
+      hideOverlay();
+    } else if (snapshot.overlay && typeof snapshot.overlay.title === 'string') {
+      showOverlay(snapshot.overlay.kicker, snapshot.overlay.title,
+        snapshot.overlay.copy, snapshot.overlay.button);
+    } else if (snapshot.mode === 'ready') showReadyOverlay();
+    else showOverlay('TAKE A BREATH', '歇一歇，马上继续',
+      '准备好后继续奔跑，或者按 P 键恢复游戏。', '继续冒险');
+    updateProfileUI();
+    return true;
+  }
   function settleAchievementRun(options = {}) {
     if (!achievementRunMode) return;
     cancelAchievementAir();
@@ -244,8 +322,9 @@
       rescues: rescueCount, overflow: Boolean(options.overflow) });
     achievementRunMode = null;
   }
-  function resetGame() {
-    settleAchievementRun();
+  function resetGame({ settle = true, forget = true } = {}) {
+    if (settle) settleAchievementRun();
+    if (forget) forgetRunSlot();
     sound.ready();
     worldX = 0; speed = runSpeedAt(0); obstacles = []; shieldPickups = [];
     jetpackPickups = []; jetpackActive = false; jetpackStartX = 0; jetpackStartY = GROUND;
@@ -1235,9 +1314,7 @@
   const classicButton = $('classic-mode');
   const extremeButton = $('extreme-mode');
   const modeReset = $('mode-reset');
-  function selectGameMode(extreme) {
-    if (extremeMode === extreme) return;
-    extremeMode = extreme;
+  function updateModeControls() {
     classicButton.setAttribute('aria-pressed', String(!extremeMode));
     extremeButton.setAttribute('aria-pressed', String(extremeMode));
     $('mode-description').textContent = extremeMode
@@ -1246,9 +1323,22 @@
     modeReset.hidden = !extremeMode;
     modeReset.disabled = !extremeMode;
     modeReset.title = extremeMode ? '将进度和续命次数归零，暂停在起点' : '将本轮进度归零';
-    resetGame(); setMode('ready');
-    showReadyOverlay();
-    updateProfileUI();
+  }
+  function selectGameMode(extreme) {
+    if (extremeMode === extreme) return;
+    if (mode === 'running') pauseGame();
+    downKeys.clear(); touchDownHeld = false; player.crouch = false;
+    saveRunSlot();
+    achievements.restoreRun?.(null);
+    achievementRunMode = null;
+    achievementAir = null;
+    extremeMode = extreme;
+    updateModeControls();
+    runSessions?.setMainMode(currentSlot());
+    if (!restoreRunSlot(currentSlot())) {
+      resetGame({ settle: false, forget: false });
+      setMode('ready'); showReadyOverlay(); updateProfileUI();
+    }
   }
   classicButton.addEventListener('click', () => selectGameMode(false));
   extremeButton.addEventListener('click', () => selectGameMode(true));
@@ -1267,12 +1357,40 @@
     window.DinoTraining.resetRun = () => {
       resetGame(); setMode('ready'); showReadyOverlay(); updateProfileUI();
     };
-    showReadyOverlay();
   }
-  window.addEventListener('pagehide', () => settleAchievementRun());
-  window.addEventListener('beforeunload', () => settleAchievementRun());
+  let preservingNavigation = false;
+  document.addEventListener('click', (event) => {
+    if (event.defaultPrevented || (event.button !== undefined && event.button !== 0)
+      || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+    const anchor = event.target.closest?.('a[href]');
+    const href = anchor?.getAttribute?.('href');
+    if (!['./index.html', './training.html', './achievements.html'].includes(href)
+      || (anchor.target && anchor.target !== '_self')) return;
+    if (mode === 'running') pauseGame();
+    downKeys.clear(); touchDownHeld = false; player.crouch = false;
+    if (!saveRunSlot()) {
+      event.preventDefault();
+      showOverlay('SAVE PAUSED', '本轮已暂停',
+        '浏览器暂时无法保存当前进度，请检查存储设置后重试。', '继续冒险');
+      return;
+    }
+    preservingNavigation = true;
+  });
+  const leaveGamePage = () => {
+    if (preservingNavigation) return;
+    settleAchievementRun();
+    forgetRunSlot();
+  };
+  window.addEventListener('pagehide', leaveGamePage);
+  window.addEventListener('beforeunload', leaveGamePage);
   window.addEventListener('pageshow', (event) => {
-    if (!event.persisted || achievementRunMode || (mode !== 'running' && mode !== 'paused')) return;
+    if (!event.persisted) return;
+    if (preservingNavigation) {
+      preservingNavigation = false;
+      achievements.refresh?.();
+      return;
+    }
+    if (achievementRunMode || (mode !== 'running' && mode !== 'paused')) return;
     resetGame(); setMode('ready'); showReadyOverlay(); updateProfileUI();
   });
   ui.audioToggle.addEventListener('click', () => {
@@ -1349,5 +1467,14 @@
   const releaseDuck = () => { touchDownHeld = false; if (!isDownHeld()) player.crouch = false; };
   duckTouch.addEventListener('pointerup', releaseDuck); duckTouch.addEventListener('pointercancel', releaseDuck);
 
-  updateAudioControls(); updateProfileUI(); fillObstacles(); draw(); requestAnimationFrame(frame);
+  function initializeGame() {
+    if (!trainingMode && !overflowDemo) extremeMode = runSessions?.getMainMode() === 'extreme';
+    updateModeControls();
+    updateAudioControls();
+    if (!restoreRunSlot(currentSlot())) {
+      updateProfileUI(); fillObstacles(); showReadyOverlay();
+    }
+    draw(); requestAnimationFrame(frame);
+  }
+  initializeGame();
 })();

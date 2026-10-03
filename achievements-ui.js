@@ -13,6 +13,14 @@
     if (summary) summary.textContent = '成就暂时无法载入';
     return;
   }
+  if (detailList && window.DinoRunSessions && typeof api.restoreRun === 'function') {
+    const sessions = window.DinoRunSessions.create('elsasms.dino-plus.v1.run-sessions.v1');
+    const slot = sessions.getMainMode();
+    const saved = sessions.get(slot);
+    if (saved?.achievementRunMode === slot && saved.achievementRun) {
+      api.restoreRun(saved.achievementRun, slot);
+    }
+  }
   let lastLibrarySignature = null;
   const tierRank = { wood: 1, bronze: 2, silver: 3, gold: 4, crystal: 5, hidden: 6 };
 

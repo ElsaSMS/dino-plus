@@ -171,6 +171,66 @@
       warningStreak: 0, lastPickup: null, overflow: false
     };
   }
+  // A page may leave the game without ending the run. Keep this snapshot separate
+  // from the cumulative record, which is written only by finishRun().
+  function snapshotRun() {
+    if (!run || run.finished) return null;
+    return {
+      version: 1, mode: run.mode,
+      thornSeen: run.thornSeen, thornSingle: run.thornSingle,
+      birdSeen: run.birdSeen, birdOver: run.birdOver, birdSmallSingle: run.birdSmallSingle,
+      airAny: run.airAny, airHigh: run.airHigh, airTwoHigh: run.airTwoHigh,
+      airPairs: [...run.airPairs],
+      cliffSeen: run.cliffSeen, cliffAllDived: run.cliffAllDived,
+      cliffRecovered: [...run.cliffRecovered], cliffAny: run.cliffAny,
+      cliffDived: run.cliffDived,
+      lucky: { ...run.lucky }, warningStreak: run.warningStreak,
+      lastPickup: run.lastPickup ? { ...run.lastPickup } : null,
+      overflow: run.overflow
+    };
+  }
+  function restoreRun(snapshot, expectedMode) {
+    if (snapshot === null) {
+      run = null;
+      state = readState();
+      notify();
+      return true;
+    }
+    const modes = ['classic', 'extreme', 'training'];
+    if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)
+      || snapshot.version !== 1 || !modes.includes(snapshot.mode)
+      || (expectedMode !== undefined && snapshot.mode !== expectedMode)) return false;
+    const countKeys = ['thornSeen', 'thornSingle', 'birdSeen', 'birdOver',
+      'cliffSeen', 'warningStreak'];
+    const boolKeys = ['birdSmallSingle', 'airAny', 'airHigh', 'airTwoHigh',
+      'cliffAllDived', 'cliffAny', 'cliffDived', 'overflow'];
+    const validCount = (value) => Number.isSafeInteger(value) && value >= 0;
+    if (countKeys.some((key) => !validCount(snapshot[key]))
+      || boolKeys.some((key) => typeof snapshot[key] !== 'boolean')
+      || snapshot.thornSingle > snapshot.thornSeen || snapshot.birdOver > snapshot.birdSeen
+      || !Array.isArray(snapshot.airPairs)
+      || snapshot.airPairs.some((pair) => !PAIRS.includes(pair))
+      || !Array.isArray(snapshot.cliffRecovered)
+      || snapshot.cliffRecovered.some((kind) => !CLIFF_KINDS.includes(kind))
+      || !snapshot.lucky || typeof snapshot.lucky !== 'object'
+      || Object.keys(newRun(snapshot.mode).lucky).some((key) => !validCount(snapshot.lucky[key]))
+      || (snapshot.lastPickup !== null && (!snapshot.lastPickup
+        || !['shield', 'jetpack'].includes(snapshot.lastPickup.kind)
+        || !Number.isFinite(snapshot.lastPickup.seconds)
+        || snapshot.lastPickup.seconds < 0))) return false;
+    const restored = newRun(snapshot.mode);
+    for (const key of countKeys.concat(boolKeys)) restored[key] = snapshot[key];
+    restored.airPairs = new Set(snapshot.airPairs);
+    restored.cliffRecovered = new Set(snapshot.cliffRecovered);
+    for (const key of Object.keys(restored.lucky)) restored.lucky[key] = snapshot.lucky[key];
+    restored.lastPickup = snapshot.lastPickup ? {
+      kind: snapshot.lastPickup.kind, seconds: snapshot.lastPickup.seconds
+    } : null;
+    state = readState();
+    run = restored;
+    notify();
+    return true;
+  }
   function startRun(mode, outfitId) {
     if (!['classic', 'extreme', 'training'].includes(mode)) return;
     state = readState();
@@ -367,10 +427,10 @@
     return () => listeners.delete(listener);
   }
   function refresh() {
-    if (run && !run.finished) return getView();
     state = readState();
     notify();
     return getView();
   }
-  global.DinoAchievements = { startRun, record, finishRun, noteNameSaved, getView, subscribe, refresh };
+  global.DinoAchievements = { startRun, record, finishRun, snapshotRun, restoreRun,
+    noteNameSaved, getView, subscribe, refresh };
 })(typeof window !== 'undefined' ? window : globalThis);
