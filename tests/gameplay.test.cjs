@@ -243,7 +243,7 @@ test('local training keeps moving-bird-only selections after a rescue warning de
   game.tick(.016);
   assert.equal(game.rescueCount(), 1);
   game.next(850);
-  game.tick(3.75);
+  game.tick(2.75);
   assert.equal(game.obstacles().length, 0, 'nothing spawns while warning sounds are delayed');
   game.tick(.1);
   assert.ok(game.obstacles().length > 0);
@@ -580,8 +580,8 @@ test('update: jetpack grants 800m flight then a colored blast and the shield rec
   assert.equal(game.blastColorful(), true);
   assert.equal(game.obstacles().some((o) => o.kind === 'gap'), false, 'landing cliff is filled');
   assert.equal(game.obstacles().some((o) => o.kind === 'cactus'), true, 'distant obstacle awaits explosion fragments');
-  assert.equal(game.shieldBufferUntil() - game.elapsed(), 3);
-  assert.equal(game.shieldWarningSpawnAfter() - game.elapsed(), 3.8);
+  assert.equal(game.shieldBufferUntil() - game.elapsed(), 2);
+  assert.equal(game.shieldWarningSpawnAfter() - game.elapsed(), 2.8);
   game.tick(.2);
   assert.equal(game.obstacles().length, 0, 'blast reaches and shatters the obstacle');
   game.drawShieldBreak(); game.drawShieldDebris();
@@ -634,7 +634,7 @@ test('game start releases the hidden button, and shortcuts stay out of focused c
 });
 
 test('holding crouch through either jump does not reenable it on landing', () => {
-  for (const downCode of ['KeyS', 'ArrowDown']) {
+  for (const downCode of ['KeyS', 'ArrowDown', 'ArrowUp']) {
     const game = createGame();
     game.startForInputTest();
     game.keyDown(downCode);
@@ -671,7 +671,7 @@ test('holding crouch through either jump does not reenable it on landing', () =>
 });
 
 test('a fresh crouch press in the air accelerates downward without teleporting or slowing forward travel', () => {
-  for (const downCode of ['KeyS', 'ArrowDown']) {
+  for (const downCode of ['KeyS', 'ArrowDown', 'ArrowUp']) {
     const game = createGame();
     const normalJump = createGame();
     game.startForInputTest();
@@ -750,18 +750,86 @@ test('releasing crouch during the dive keeps the descent but lands upright', () 
   assert.equal(game.playerState().crouch, false);
 });
 
-test('both crouch keys are tracked independently', () => {
+test('all three crouch keys are tracked independently', () => {
   const game = createGame();
   game.startForInputTest();
   game.keyDown('KeyS');
   game.keyDown('ArrowDown');
+  game.keyDown('ArrowUp');
   game.keyUp('KeyS');
   assert.equal(game.playerState().crouch, true);
   game.keyUp('ArrowDown');
+  assert.equal(game.playerState().crouch, true);
+  game.keyUp('ArrowUp');
   assert.equal(game.playerState().crouch, false);
   game.keyDown('KeyS');
   game.blur();
   assert.equal(game.playerState().crouch, false);
+});
+
+test('P resumes a paused run only after a visible three-second countdown', () => {
+  const game = createGame();
+  game.startForInputTest();
+  game.frame(1000);
+  game.keyDown('KeyP');
+  assert.equal(game.mode(), 'paused');
+  const x = game.worldPosition();
+  const feetY = game.playerState().feetY;
+  game.keyDown('KeyP');
+  assert.equal(game.mode(), 'countdown');
+  assert.equal(game.element('resume-countdown').hidden, false);
+  assert.equal(game.element('resume-countdown-number').textContent, '3');
+  assert.equal(game.keyDown('ArrowUp').defaultPrevented, true);
+  assert.equal(game.keyDown('Space').defaultPrevented, true);
+  assert.equal(game.playerState().feetY, feetY, 'movement keys do nothing during the countdown');
+  game.frame(2000);
+  assert.equal(game.element('resume-countdown-number').textContent, '2');
+  game.frame(3000);
+  assert.equal(game.element('resume-countdown-number').textContent, '1');
+  game.frame(3999);
+  assert.equal(game.mode(), 'countdown');
+  assert.equal(game.worldPosition(), x, 'the course stays frozen until all three seconds pass');
+  game.frame(4000);
+  assert.equal(game.mode(), 'running');
+  assert.equal(game.element('resume-countdown').hidden, true);
+  assert.equal(game.worldPosition(), x);
+  game.frame(4016);
+  assert.ok(game.worldPosition() > x, 'movement resumes on the next animation frame');
+});
+
+test('P or losing focus cancels the countdown without moving the run', () => {
+  const game = createGame();
+  game.startForInputTest();
+  game.frame(1000);
+  game.keyDown('KeyP');
+  const x = game.worldPosition();
+  game.keyDown('KeyP');
+  game.frame(2000);
+  game.keyDown('KeyP');
+  assert.equal(game.mode(), 'paused');
+  assert.equal(game.element('resume-countdown').hidden, true);
+  game.frame(8000);
+  assert.equal(game.worldPosition(), x);
+  game.keyDown('KeyP');
+  assert.equal(game.element('resume-countdown-number').textContent, '3', 'a new countdown restarts from three');
+  game.blur();
+  assert.equal(game.mode(), 'paused');
+  assert.equal(game.element('resume-countdown').hidden, true);
+});
+
+test('switching modes during the countdown saves the frozen run as paused', () => {
+  const game = createGame([], {}, null, 3.2, false, true);
+  game.initializeGame();
+  game.startGame();
+  game.player(12345, 320, false);
+  game.keyDown('KeyP');
+  game.keyDown('KeyP');
+  assert.equal(game.mode(), 'countdown');
+  game.element('extreme-mode').click();
+  assert.equal(game.element('resume-countdown').hidden, true);
+  game.element('classic-mode').click();
+  assert.equal(game.mode(), 'paused');
+  assert.equal(game.worldPosition(), 12345);
 });
 
 test('pressing the other crouch key cannot rearm a held crouch input after jumping', () => {
@@ -1318,7 +1386,7 @@ test('the sky pillar leaves room for a low single jump underneath', () => {
     'the former hovering bird scene is fully removed');
 });
 
-test('extreme rescues: every lethal hazard triggers progressive clearing and one three-second buffer', () => {
+test('extreme rescues: every lethal hazard triggers progressive clearing and one two-second buffer', () => {
   for (const cause of ['thorn', 'fall', 'pillar']) {
     const game = createGame(() => 0);
     game.setExtreme(true); game.startForInputTest();
@@ -1337,25 +1405,25 @@ test('extreme rescues: every lethal hazard triggers progressive clearing and one
     const blastAt = game.shieldBreakAt();
     assert.equal(game.rescueCount(), 1, cause);
     assert.equal(game.blastColorful(), false);
-    assert.ok(Math.abs(game.shieldBufferUntil() - blastAt - 3) < 1e-9);
-    assert.ok(Math.abs(game.shieldWarningSpawnAfter() - blastAt - 3.8) < 1e-9);
+    assert.ok(Math.abs(game.shieldBufferUntil() - blastAt - 2) < 1e-9);
+    assert.ok(Math.abs(game.shieldWarningSpawnAfter() - blastAt - 2.8) < 1e-9);
     assert.equal(game.obstacles().some(o => o.x === x + 780), true, 'distant pillar waits for the blast wave');
     assert.ok(game.worldPosition() < x + 25, 'no teleport across the track');
     for (let i = 0; i < 24; i++) game.tick(.032);
     assert.equal(game.obstacles().length, 0, 'all visible hazards are shattered, including cliffs and pillars');
-    while (game.elapsed() < blastAt + 2.95) game.tick(.016);
+    while (game.elapsed() < blastAt + 1.95) game.tick(.016);
     assert.equal(game.obstacles().length, 0, 'no new hazards during the buffer');
     assert.equal(game.mode(), 'running');
     assert.equal(game.rescueCount(), 1, 'no repeat death during the explosion or buffer');
-    game.setElapsed(blastAt + 3.01); game.tick(0);
+    game.setElapsed(blastAt + 2.01); game.tick(0);
     assert.ok(game.obstacles().length > 0, 'ordinary hazards resume');
     assert.ok(game.obstacles().every(o => o.x > game.worldPosition() + 815), 'spawn outside the viewport');
     assert.ok(game.obstacles().every(o => !['skyPillar', 'movingLow', 'movingHigh'].includes(o.kind)));
-    game.setElapsed(blastAt + 3.79); game.next(game.worldPosition() + 100); game.tick(0);
+    game.setElapsed(blastAt + 2.79); game.next(game.worldPosition() + 100); game.tick(0);
     assert.ok(game.obstacles().every(o => !['skyPillar', 'movingLow', 'movingHigh'].includes(o.kind)));
-    game.setElapsed(blastAt + 3.81); game.next(game.worldPosition() + 100); game.tick(0);
+    game.setElapsed(blastAt + 2.81); game.next(game.worldPosition() + 100); game.tick(0);
     const pillar = game.obstacles().find(o => o.kind === 'skyPillar');
-    assert.ok(pillar, 'warning hazards resume after 3.8 seconds');
+    assert.ok(pillar, 'warning hazards resume after 2.8 seconds');
     assert.ok(game.timeUntilVisible(pillar) > .8, 'full warning lead is preserved');
   }
 });
@@ -1858,7 +1926,7 @@ test('the shield blast outruns nearby hazards at maximum running speed', () => {
   assert.equal(game.hasGroundSupport(game.worldPosition()), true);
 });
 
-test('post-break hazards enter from offscreen and warning hazards wait 3.8 seconds', () => {
+test('post-break hazards enter from offscreen and warning hazards wait 2.8 seconds', () => {
   const game = createGame(() => 0);
   game.startForInputTest();
   game.player(300000, 320, false);
@@ -1868,11 +1936,11 @@ test('post-break hazards enter from offscreen and warning hazards wait 3.8 secon
   const breakX = game.worldPosition();
   const bufferEnd = game.shieldBufferUntil();
   const warningStart = game.shieldWarningSpawnAfter();
-  assert.ok(Math.abs(warningStart - game.shieldBreakAt() - 3.8) < 1e-9);
+  assert.ok(Math.abs(warningStart - game.shieldBreakAt() - 2.8) < 1e-9);
   game.setElapsed(bufferEnd - .003);
-  game.player(breakX + 1120 * 3 - 2, 320, false);
+  game.player(breakX + 1120 * 2 - 2, 320, false);
   game.tick(.004);
-  assert.ok(game.obstacles().length > 0, 'ordinary hazards resume after three seconds');
+  assert.ok(game.obstacles().length > 0, 'ordinary hazards resume after two seconds');
   assert.ok(game.obstacles().every((obstacle) => !['movingLow', 'movingHigh', 'skyPillar'].includes(obstacle.kind)));
   assert.ok(game.obstacles().every((obstacle) => obstacle.x > game.worldPosition() + 815),
     'new obstacles start outside the right edge');
@@ -1880,7 +1948,7 @@ test('post-break hazards enter from offscreen and warning hazards wait 3.8 secon
   game.next(game.worldPosition() + 100);
   game.tick(.01);
   assert.ok(game.obstacles().every((obstacle) => !['movingLow', 'movingHigh', 'skyPillar'].includes(obstacle.kind)),
-    'warning hazards remain blocked before 3.8 seconds');
+    'warning hazards remain blocked before 2.8 seconds');
   game.next(game.worldPosition() + 100);
   game.setElapsed(warningStart - .001);
   game.tick(.002);
@@ -1889,7 +1957,7 @@ test('post-break hazards enter from offscreen and warning hazards wait 3.8 secon
   assert.ok(game.timeUntilVisible(pillar) > .8, 'the pillar retains its full warning lead');
 });
 
-test('one shield charge clears a three-second flat buffer and cannot stack', () => {
+test('one shield charge clears a two-second flat buffer and cannot stack', () => {
   const game = createGame();
   game.startForInputTest();
   game.setShieldPickups([{ x: 5, y: 280 }, { x: 10, y: 280 }]);
@@ -1902,7 +1970,7 @@ test('one shield charge clears a three-second flat buffer and cannot stack', () 
   game.tick(.016);
   assert.equal(game.mode(), 'running');
   assert.equal(game.shieldReady(), false, 'both overlapping pickups still give only one charge');
-  assert.ok(game.shieldBufferUntil() >= 3);
+  assert.ok(game.shieldBufferUntil() >= 2);
   assert.ok(game.obstacles().some((obstacle) => obstacle.kind === 'gap'),
     'the visible cliff waits for the blast instead of vanishing instantly');
   assert.ok(game.obstacles().some((obstacle) => obstacle.kind === 'skyPillar'),
@@ -1917,7 +1985,7 @@ test('one shield charge clears a three-second flat buffer and cannot stack', () 
   game.tick(.016);
   assert.equal(game.nextPosition(), 100, 'new obstacles are not generated inside the buffer');
   game.next(Infinity);
-  for (let i = 0; i < 190; i++) game.tick(.016);
+  for (let i = 0; i < 120; i++) game.tick(.016);
   const x = game.worldPosition();
   game.setObstacles([{ kind: 'cactus', x: x + 8, width: 42, height: 46, seed: 0 }]);
   game.tick(.016);
@@ -2272,6 +2340,125 @@ test('clearing high thorns and high birds in one airtime credits the real game e
   assert.equal(groups.find((group) => group.id === 'thorn').awards[0].unlocked, true);
   assert.equal(groups.find((group) => group.id === 'bird').awards[0].unlocked, true);
   assert.equal(groups.find((group) => group.id === 'air').awards[0].unlocked, true);
+});
+
+test('one pillar cliff counts as one crossed gap, not a two-obstacle air chain', () => {
+  const game = createGame([], {}, null, 3.2, false, true);
+  game.startGame();
+  game.player(25000, 320, false);
+  const gap = game.makeObstacle('gap', 25200, 600, { pillarScene: true });
+  const pillar = game.makeObstacle('skyPillar', 25400, 30, { sceneGap: gap });
+  gap.scenePillar = pillar;
+  game.setObstacles([gap, pillar]);
+  game.next(Infinity);
+  game.keyDown('Space');
+  game.player(25400, 380, false);
+  game.setPlayerState({ feetY: 380, vy: 0, grounded: false });
+  game.tick(.016);
+  game.player(25850, 319, false);
+  game.setPlayerState({ feetY: 319, vy: 100, grounded: false });
+  game.tick(.016);
+  assert.equal(game.playerState().grounded, true);
+  game.endGame();
+  assert.equal(game.achievements.getView().groups.find((group) => group.id === 'air')
+    .awards[0].unlocked, false);
+});
+
+test('flying below a high bird beside a cliff does not earn an air-chain badge', () => {
+  const game = createGame([], {}, null, 3.2, false, true);
+  game.startGame();
+  game.player(25000, 320, false);
+  const gap = game.makeObstacle('gap', 25200, 500);
+  const bird = game.makeObstacle('duck', 25320, 68);
+  game.setObstacles([gap, bird]);
+  game.next(Infinity);
+  game.keyDown('Space');
+  game.player(25320, 350, false);
+  game.setPlayerState({ feetY: 350, vy: 0, grounded: false });
+  game.tick(.016);
+  game.player(25770, 319, false);
+  game.setPlayerState({ feetY: 319, vy: 100, grounded: false });
+  game.tick(.016);
+  assert.equal(game.playerState().grounded, true);
+  game.endGame();
+  const groups = game.achievements.getView().groups;
+  assert.equal(groups.find((group) => group.id === 'bird').awards[0].unlocked, false);
+  assert.equal(groups.find((group) => group.id === 'air').awards[0].unlocked, false);
+});
+
+test('briefly rising near a bird then crossing beneath it cannot complete an air chain', () => {
+  const game = createGame([], {}, null, 3.2, false, true);
+  game.startGame();
+  game.player(25000, 320, false);
+  game.setObstacles([
+    game.makeObstacle('gap', 25200, 500),
+    game.makeObstacle('duck', 25320, 68)
+  ]);
+  game.next(Infinity);
+  game.keyDown('Space');
+  for (const [x, feetY] of [[25280, 200], [25330, 350]]) {
+    game.player(x, feetY, false);
+    game.setPlayerState({ feetY, vy: 0, grounded: false });
+    game.tick(.016);
+  }
+  game.player(25770, 319, false);
+  game.setPlayerState({ feetY: 319, vy: 100, grounded: false });
+  game.tick(.016);
+  assert.equal(game.playerState().grounded, true);
+  game.endGame();
+  assert.equal(game.achievements.getView().groups.find((group) => group.id === 'air')
+    .awards[0].unlocked, false);
+});
+
+test('two tall thorns crossed entirely from above still earn every public air-chain tier', () => {
+  const game = createGame([], {}, null, 3.2, false, true);
+  game.startGame();
+  game.player(25000, 320, false);
+  game.setObstacles([
+    game.makeObstacle('tallThorn', 25200, 84),
+    game.makeObstacle('tallThorn', 25350, 84)
+  ]);
+  game.next(Infinity);
+  game.keyDown('Space');
+  for (const x of [25220, 25370]) {
+    game.player(x, 180, false);
+    game.setPlayerState({ feetY: 180, vy: 0, grounded: false });
+    game.tick(.016);
+  }
+  game.player(25500, 319, false);
+  game.setPlayerState({ feetY: 319, vy: 100, grounded: false });
+  game.tick(.016);
+  assert.equal(game.playerState().grounded, true);
+  game.endGame();
+  const awards = game.achievements.getView().groups.find((group) => group.id === 'air').awards;
+  assert.equal(awards[0].unlocked, true);
+  assert.equal(awards[1].unlocked, true);
+  assert.equal(awards[2].unlocked, true);
+});
+
+test('one jump across a cliff and a separate thorn still earns the basic air-chain badge', () => {
+  const game = createGame([], {}, null, 3.2, false, true);
+  game.startGame();
+  game.player(25000, 320, false);
+  game.setObstacles([
+    game.makeObstacle('gap', 25200, 300),
+    game.makeObstacle('cactus', 25580, 42)
+  ]);
+  game.next(Infinity);
+  game.keyDown('Space');
+  for (const [x, feetY] of [[25300, 180], [25590, 250]]) {
+    game.player(x, feetY, false);
+    game.setPlayerState({ feetY, vy: 0, grounded: false });
+    game.tick(.016);
+  }
+  game.player(25680, 319, false);
+  game.setPlayerState({ feetY: 319, vy: 100, grounded: false });
+  game.tick(.016);
+  assert.equal(game.playerState().grounded, true);
+  game.endGame();
+  const awards = game.achievements.getView().groups.find((group) => group.id === 'air').awards;
+  assert.equal(awards[0].unlocked, true);
+  assert.equal(awards[1].unlocked, false);
 });
 
 test('jumping over a hovering giant counts only after landing beyond its projection', () => {

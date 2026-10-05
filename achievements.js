@@ -145,6 +145,7 @@
       }
     }
     if (!state.nameSaved || state.outfitsStarted.length < 2) delete state.unlocked['outfit.wood'];
+    if (state.trainingUsed) state.unlocked['training.wood'] = true;
     existingProfileRecords(state);
     return state;
   }
@@ -228,6 +229,11 @@
     } : null;
     state = readState();
     run = restored;
+    if (snapshot.mode === 'training' && !state.trainingUsed) {
+      state.trainingUsed = true;
+      award('training', [true]);
+      save();
+    }
     notify();
     return true;
   }
@@ -237,6 +243,10 @@
     run = newRun(mode);
     if (typeof outfitId === 'string' && outfitId.trim() && outfitId.length < 40
       && !state.outfitsStarted.includes(outfitId)) state.outfitsStarted.push(outfitId);
+    if (mode === 'training') {
+      state.trainingUsed = true;
+      award('training', [true]);
+    }
     award('outfit', [state.nameSaved && state.outfitsStarted.length >= 2]);
     save();
     notify();

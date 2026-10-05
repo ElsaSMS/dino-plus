@@ -18,6 +18,7 @@
   const BASE_SPEED = 350;
   const MAX_SPEED = BASE_SPEED * 3.2;
   const EXTREME_SPEED = BASE_SPEED * 3.6;
+  const EXTREME_MIN_CLIFF_WIDTH = 780;
   const EXTREME_DISTANCE = 100000 * 10; // Displayed meters -> world units.
   const CLASSIC_INT_MAX = 2147483647;
   const OVERFLOW_DEMO_START = 2147483000 * 10;
@@ -35,8 +36,8 @@
   const SHIELD_HARD_DROP_CHANCE = .02;
   const SHIELD_OTHER_DROP_CHANCE = .01;
   const SHIELD_DROP_SPACING = 1800;
-  const SHIELD_BUFFER_SECONDS = 3;
-  const SHIELD_WARNING_SPAWN_DELAY = 3.8;
+  const SHIELD_BUFFER_SECONDS = 2;
+  const SHIELD_WARNING_SPAWN_DELAY = 2.8;
   const SHIELD_BREAK_EFFECT_SECONDS = .65;
   const SHIELD_BLAST_SPEED = 2600;
   const SHIELD_PICKUP_RADIUS = 19;
@@ -59,6 +60,7 @@
     profileBest: $('profile-best'), recordNote: $('record-note'), recent: $('recent-list'),
     name: $('name-input'), nameHint: $('name-hint'), outfitGrid: $('outfit-grid'),
     warning: $('hazard-warning'), whiteout: $('overflow-whiteout'), audioToggle: $('audio-toggle'),
+    countdown: $('resume-countdown'), countdownNumber: $('resume-countdown-number'),
     musicVolume: $('music-volume'), effectsVolume: $('effects-volume')
   };
   const noSound = () => {};
@@ -136,6 +138,7 @@
   let powerupEpochX = 0;
   let elapsed = 0;
   let lastFrame = 0;
+  let countdownRemaining = 0;
   let player = { feetY: GROUND, vy: 0, jumps: 0, crouch: false, grounded: true, diving: false };
   const downKeys = new Set();
   let touchDownHeld = false;
@@ -234,16 +237,16 @@
   function setMode(next) {
     mode = next;
     if (mode !== 'overflow') {
-      ui.status.textContent = ({ ready: '准备出发', running: '正在冒险', paused: '已暂停', over: '本轮结束' })[mode];
+      ui.status.textContent = ({ ready: '准备出发', running: '正在冒险', paused: '已暂停', countdown: '即将继续', over: '本轮结束' })[mode];
     }
     ui.pill.dataset.mode = mode;
     ui.pauseButton.disabled = mode === 'ready' || mode === 'over' || mode === 'overflow';
-    ui.pauseButton.textContent = mode === 'paused' ? '继续' : '暂停';
+    ui.pauseButton.textContent = mode === 'paused' ? '继续' : mode === 'countdown' ? '取消倒计时' : '暂停';
     if (mode !== 'running') ui.warning.hidden = true;
   }
   function captureRunState() {
     return {
-      version: 1, slot: currentSlot(), mode: mode === 'running' ? 'paused' : mode,
+      version: 1, slot: currentSlot(), mode: mode === 'running' || mode === 'countdown' ? 'paused' : mode,
       worldX, speed, elapsed, player, obstacles, nextObstacleX,
       shieldPickups, jetpackPickups, shieldReady, shieldUntil, shieldBufferUntil,
       shieldWarningSpawnAfter, shieldRecoverySpawnPending, shieldWarningSpawnPending,
@@ -296,6 +299,7 @@
       highScoreFlash, recordCelebrated, rescueCount,
       achievementAir, achievementAirSerial, achievementRunMode } = snapshot);
     downKeys.clear(); touchDownHeld = false; player.crouch = false;
+    countdownRemaining = 0; ui.countdown.hidden = true;
     lastFrame = 0;
     sound.ready();
     sound.jetpack(jetpackActive);
@@ -311,7 +315,7 @@
         snapshot.overlay.copy, snapshot.overlay.button);
     } else if (snapshot.mode === 'ready') showReadyOverlay();
     else showOverlay('TAKE A BREATH', '歇一歇，马上继续',
-      '准备好后继续奔跑，或者按 P 键恢复游戏。', '继续冒险');
+      '准备好后继续奔跑，或者按 P 键倒数三秒后继续。', '继续冒险');
     updateProfileUI();
     return true;
   }
@@ -341,6 +345,7 @@
     shieldDebris = [];
     achievementAir = null; blastCause = null; jetpackLandingGap = null;
     downKeys.clear(); touchDownHeld = false;
+    countdownRemaining = 0; ui.countdown.hidden = true;
     ui.warning.hidden = true;
     if (ui.whiteout) ui.whiteout.hidden = true;
     if (!extremeMode) { modeReset.hidden = true; modeReset.disabled = true; }
@@ -348,14 +353,17 @@
     ui.distance.textContent = '0000';
     fillObstacles();
   }
-  function startGame() {
-    if (mode === 'paused') {
-      if (!achievementRunMode) {
-        achievementRunMode = trainingMode ? 'training' : extremeMode ? 'extreme' : 'classic';
-        achievements.startRun(achievementRunMode, profile.outfit);
-      }
-      setMode('running'); hideOverlay(); sound.resume(); return;
+  function resumeGame() {
+    if (!achievementRunMode) {
+      achievementRunMode = trainingMode ? 'training' : extremeMode ? 'extreme' : 'classic';
+      achievements.startRun(achievementRunMode, profile.outfit);
     }
+    countdownRemaining = 0;
+    ui.countdown.hidden = true;
+    setMode('running'); hideOverlay(); sound.resume();
+  }
+  function startGame() {
+    if (mode === 'paused') { resumeGame(); return; }
     resetGame();
     if (overflowDemo && !trainingMode && !extremeMode) {
       worldX = OVERFLOW_DEMO_START;
@@ -372,8 +380,18 @@
   function pauseGame() {
     if (mode === 'running') {
       sound.pause();
-      setMode('paused'); showOverlay('TAKE A BREATH', '歇一歇，马上继续', '准备好后继续奔跑，或者按 P 键恢复游戏。', '继续冒险');
-    } else if (mode === 'paused') startGame();
+      setMode('paused'); showOverlay('TAKE A BREATH', '歇一歇，马上继续', '准备好后继续奔跑，或者按 P 键倒数三秒后继续。', '继续冒险');
+    } else if (mode === 'paused') {
+      downKeys.clear(); touchDownHeld = false; player.crouch = false;
+      countdownRemaining = 3;
+      ui.countdownNumber.textContent = '3';
+      ui.countdown.hidden = false;
+      setMode('countdown'); hideOverlay();
+    } else if (mode === 'countdown') {
+      countdownRemaining = 0;
+      ui.countdown.hidden = true;
+      setMode('paused'); showOverlay('TAKE A BREATH', '歇一歇，马上继续', '准备好后继续奔跑，或者按 P 键倒数三秒后继续。', '继续冒险');
+    }
   }
   function jump() {
     if (mode === 'over') return;
@@ -386,7 +404,8 @@
       if (achievementAir) cancelAchievementAir();
       achievementAir = {
         id: ++achievementAirSerial, cleared: [], birds: new Set(), bodyAbove: new Set(),
-        birdStarts: new Map(obstacles.filter((obstacle) => isAerialBird(obstacle.kind))
+        birdStarts: new Map(obstacles.filter((obstacle) => isAerialBird(obstacle.kind)
+          || isMovingBird(obstacle.kind))
           .map((obstacle) => [obstacle, obstacle.x])),
         groundTakeoff: fromGround && hasGroundSupport(worldX) && Math.abs(player.feetY - GROUND) <= 1,
         takeoffRight: worldX + 20 * (player.crouch ? 1.17 : 1),
@@ -402,7 +421,7 @@
     if (fromGround) player.feetY = Math.min(player.feetY, GROUND - 1);
   }
   function pressDown() {
-    if (mode === 'paused' || mode === 'over' || mode === 'overflow' || jetpackActive) return;
+    if (mode === 'paused' || mode === 'countdown' || mode === 'over' || mode === 'overflow' || jetpackActive) return;
     if (player.grounded) { player.crouch = true; return; }
     if (player.feetY < H) for (const obstacle of obstacles) {
       if (isGapKind(obstacle.kind) && isOpenGap(obstacle)
@@ -538,8 +557,11 @@
     if (kind === 'cactus') return roll < .20 ? 42 : roll < .65 ? 78 : 114;
     if (kind === 'tallThorn') return 84;
     if (kind === 'bramble') return Math.round(targetSpeed * (.54 + roll * .32));
-    if (isGapKind(kind)) return Math.round(targetSpeed * .86);
+    if (isGapKind(kind)) return extremeCliffWidth(Math.round(targetSpeed * .86));
     return 42;
+  }
+  function extremeCliffWidth(width) {
+    return extremeMode ? Math.max(width, EXTREME_MIN_CLIFF_WIDTH) : width;
   }
   function obstacleKind(x, roll) {
     if (x < 1100) return 'cactus';
@@ -595,7 +617,8 @@
     const first = makeObstacle(firstKind, nextObstacleX, obstacleWidth(firstKind, nextObstacleX, firstKind === 'cactus' ? .6 : 0));
     const gapX = first.x + first.width + firstSpeed * .48;
     const gapSpeed = runSpeedAt(gapX);
-    const gap = makeObstacle('gap', gapX, Math.round(gapSpeed * .44), { short: true });
+    const gap = makeObstacle('gap', gapX,
+      extremeCliffWidth(Math.round(gapSpeed * .44)), { short: true });
     const lastKind = tallSide === 'after' ? 'tallThorn' : cliffNeighborKind('after', gapX, Math.random());
     const lastX = gap.x + gap.width + gapSpeed * .46;
     const lastSpeed = runSpeedAt(lastX);
@@ -609,7 +632,8 @@
     const gapX = nextObstacleX;
     const targetSpeed = runSpeedAt(gapX);
     const pressure = runPressure(gapX);
-    const gap = makeObstacle('gap', gapX, Math.round(targetSpeed * .73), { pillarScene: true });
+    const gap = makeObstacle('gap', gapX,
+      extremeCliffWidth(Math.round(targetSpeed * .73)), { pillarScene: true });
     const pillar = makeObstacle('skyPillar', gapX + Math.round(targetSpeed * .26),
       Math.round(Math.max(22, targetSpeed * .027)));
     // The cliff and its pillar form one obstacle for warning streaks.
@@ -1019,10 +1043,22 @@
         else if (current.airId !== achievementAir.id) current.mixedAir = true;
         current.airborne = true;
         current.maxJumps = Math.max(current.maxJumps, player.jumps);
+        if (isMovingBird(obstacle.kind) && !achievementAir.birdStarts.has(obstacle)) {
+          achievementAir.birdStarts.set(obstacle, obstacle.x);
+        }
+        if (!isGapKind(obstacle.kind) && !isAerialBird(obstacle.kind)
+          && obstacle.kind !== 'skyPillar'
+          && worldX + 20 > obstacle.x && worldX - 11 < obstacle.x + obstacle.width
+          && player.feetY <= shieldBlastBounds(obstacle).top) current.airAbove = true;
         if (isAerialBird(obstacle.kind)) {
           achievementAir.birds.add(obstacle);
           if (!achievementAir.birdStarts.has(obstacle)) {
             achievementAir.birdStarts.set(obstacle, obstacle.x);
+          }
+          if (worldX + 20 > obstacle.x && worldX - 11 < obstacle.x + obstacle.width) {
+            if (player.feetY <= GROUND + birdStyles[obstacle.kind].center - 12) {
+              current.airAbove = true;
+            } else current.airBelow = true;
           }
           // Crossing beneath the bird must not count as leaping over it.
           if (player.feetY <= GROUND + birdStyles[obstacle.kind].center - 12) {
@@ -1118,11 +1154,28 @@
         }
       } else if (state.birdPending) recordAchievementBirdResult(bird);
     }
-    if (achievementAir.cleared.length >= 2) {
-      achievements.record('airCombo', { obstacles: achievementAir.cleared.length,
-        highKinds: achievementAir.cleared.map((item) =>
-          isAerialBird(item.kind) ? item.obstacle.achievement?.birdOver && item.kind !== 'giantHover' ? 'bird' : null
-            : item.highKind).filter(Boolean) });
+    const candidates = new Set(achievementAir.cleared.map((item) => item.obstacle));
+    for (const obstacle of obstacles) {
+      if (obstacle.achievement?.airId === achievementAir.id) candidates.add(obstacle);
+    }
+    const crossedAbove = [...candidates].filter((obstacle) => {
+      const state = obstacle.achievement;
+      if (!state || state.airId !== achievementAir.id || state.mixedAir
+        || obstacle.kind === 'skyPillar') return false;
+      const startX = achievementAir.birdStarts.get(obstacle) ?? obstacle.x;
+      if (achievementAir.takeoffRight > startX
+        || landingLeft < obstacle.x + obstacle.width) return false;
+      if (isAerialBird(obstacle.kind)) {
+        return state.birdOver === true && state.airAbove === true && state.airBelow !== true;
+      }
+      if (isGapKind(obstacle.kind)) return achievementAir.groundTakeoff && isOpenGap(obstacle);
+      return state.airAbove === true;
+    }).sort((a, b) => a.x + a.width - b.x - b.width);
+    if (crossedAbove.length >= 2) {
+      achievements.record('airCombo', { obstacles: crossedAbove.length,
+        highKinds: crossedAbove.map((obstacle) => obstacle.kind === 'tallThorn' ? 'thorn'
+          : (obstacle.kind === 'duck' || obstacle.kind === 'movingHigh') ? 'bird' : null)
+          .filter(Boolean) });
     }
     achievementAir = null;
   }
@@ -1288,9 +1341,15 @@
   function visualState() { return { worldX, elapsed, player, profile, mode, obstacles, shieldPickups, jetpackPickups, shieldReady, jetpackActive, shieldBreakAt, shieldBreakX, shieldBreakY, shieldDebris, blastColorful, extremeMode, rescueCount, highScoreFlash }; }
   function draw() { renderer.render(visualState()); }
   function frame(timestamp) {
-    const dt = Math.min((timestamp - (lastFrame || timestamp)) / 1000, .032);
+    const wallDt = Math.max(0, (timestamp - (lastFrame || timestamp)) / 1000);
+    const dt = Math.min(wallDt, .032);
     lastFrame = timestamp;
     if (mode === 'running') update(dt);
+    else if (mode === 'countdown') {
+      countdownRemaining = Math.max(0, countdownRemaining - wallDt);
+      if (countdownRemaining <= 1e-6) resumeGame();
+      else ui.countdownNumber.textContent = String(Math.ceil(countdownRemaining));
+    }
     draw(); requestAnimationFrame(frame);
   }
 
@@ -1326,7 +1385,7 @@
   }
   function selectGameMode(extreme) {
     if (extremeMode === extreme) return;
-    if (mode === 'running') pauseGame();
+    if (mode === 'running' || mode === 'countdown') pauseGame();
     downKeys.clear(); touchDownHeld = false; player.crouch = false;
     saveRunSlot();
     achievements.restoreRun?.(null);
@@ -1366,7 +1425,7 @@
     const href = anchor?.getAttribute?.('href');
     if (!['./index.html', './training.html', './achievements.html'].includes(href)
       || (anchor.target && anchor.target !== '_self')) return;
-    if (mode === 'running') pauseGame();
+    if (mode === 'running' || mode === 'countdown') pauseGame();
     downKeys.clear(); touchDownHeld = false; player.crouch = false;
     if (!saveRunSlot()) {
       event.preventDefault();
@@ -1433,16 +1492,21 @@
       return;
     }
     if (mode === 'overflow') {
-      if (e.code === 'Space' || e.code === 'ArrowDown') e.preventDefault();
+      if (e.code === 'Space' || e.code === 'ArrowDown' || e.code === 'ArrowUp') e.preventDefault();
       return;
     }
     if (isControl(e.target) || isControl(document.activeElement)) return;
+    if (mode === 'countdown') {
+      if (['Space', 'ArrowUp', 'ArrowDown', 'KeyS'].includes(e.code)) e.preventDefault();
+      if (e.code === 'KeyP') { e.preventDefault(); if (!e.repeat) pauseGame(); }
+      return;
+    }
     if (e.code === 'Enter' || e.code === 'NumpadEnter') {
       if (mode === 'running') e.preventDefault();
       return;
     }
     if (e.code === 'Space') { e.preventDefault(); if (!e.repeat) jump(); }
-    if (e.code === 'ArrowDown' || e.code === 'KeyS') {
+    if (e.code === 'ArrowDown' || e.code === 'ArrowUp' || e.code === 'KeyS') {
       e.preventDefault();
       if (!e.repeat && !isDownHeld()) pressDown();
       downKeys.add(e.code);
@@ -1450,13 +1514,13 @@
     if (e.code === 'KeyP' && !e.repeat) { e.preventDefault(); pauseGame(); }
   });
   window.addEventListener('keyup', (e) => {
-    if (e.code === 'ArrowDown' || e.code === 'KeyS') {
+    if (e.code === 'ArrowDown' || e.code === 'ArrowUp' || e.code === 'KeyS') {
       downKeys.delete(e.code);
       if (!isDownHeld()) player.crouch = false;
     }
   });
-  window.addEventListener('blur', () => { downKeys.clear(); touchDownHeld = false; player.crouch = false; if (mode === 'running') pauseGame(); });
-  document.addEventListener('visibilitychange', () => { if (document.hidden && mode === 'running') pauseGame(); });
+  window.addEventListener('blur', () => { downKeys.clear(); touchDownHeld = false; player.crouch = false; if (mode === 'running' || mode === 'countdown') pauseGame(); });
+  document.addEventListener('visibilitychange', () => { if (document.hidden && (mode === 'running' || mode === 'countdown')) pauseGame(); });
   const jumpTouch = $('touch-jump'), duckTouch = $('touch-duck');
   jumpTouch.addEventListener('pointerdown', (e) => { e.preventDefault(); jump(); });
   duckTouch.addEventListener('pointerdown', (e) => {

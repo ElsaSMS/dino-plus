@@ -32,6 +32,9 @@
 .mode-reset:disabled{opacity:.45;cursor:default}
 .hazard-warning{position:absolute;z-index:3;top:46%;right:23px;display:grid;place-items:center;width:65px;height:65px;border:3px solid #ffdbd5;border-radius:18px;background:#c73533e8;color:#fff;font-size:37px;line-height:1;box-shadow:0 0 0 7px #d7353333,0 8px 23px #78292366;pointer-events:none;animation:hazard-flash .45s steps(2,end) infinite}
 .hazard-warning[hidden]{display:none}
+.resume-countdown{position:absolute;z-index:4;inset:0;display:grid;place-items:center;background:#263b3045;pointer-events:none}
+.resume-countdown[hidden]{display:none}
+.resume-countdown span{display:grid;place-items:center;width:clamp(100px,18%,160px);aspect-ratio:1;border:3px solid #fff8e2;border-radius:50%;background:#fff7e8ef;color:#2f5945;font-size:clamp(60px,10vw,108px);font-weight:800;font-variant-numeric:tabular-nums;line-height:1;box-shadow:0 0 0 12px #fff8e230,0 16px 50px #29412e55}
 @keyframes hazard-flash{50%{opacity:.26;transform:scale(.91)}}
 body.game-expanded .site-shell{max-width:1750px}
 body.game-expanded .layout{grid-template-columns:minmax(0,1fr)}

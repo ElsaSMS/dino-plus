@@ -37,7 +37,7 @@ test('catalogue has all 31 named badges and every image resolves', () => {
   }
 });
 
-test('training settles at run end; saved name and two started outfits unlock immediately', () => {
+test('training unlocks at its first start; saved name and two started outfits remain independent', () => {
   const store = {};
   const { api } = load(store);
   let notifications = 0;
@@ -45,7 +45,7 @@ test('training settles at run end; saved name and two started outfits unlock imm
   api.noteNameSaved();
   api.startRun('training', 'explorer');
   assert.equal(award(api, 'outfit', 'wood').unlocked, false);
-  assert.equal(award(api, 'training', 'wood').unlocked, false);
+  assert.equal(award(api, 'training', 'wood').unlocked, true);
   api.finishRun({ distance: 200 });
   assert.equal(award(api, 'training', 'wood').unlocked, true);
   assert.equal(award(api, 'outfit', 'wood').unlocked, false);
@@ -59,6 +59,39 @@ test('training settles at run end; saved name and two started outfits unlock imm
   assert.ok(store[KEY]);
   const restored = load(store).api;
   assert.equal(award(restored, 'outfit', 'wood').unlocked, true);
+});
+
+test('training first earns its badge without naming or outfit progress, even across a paused-run restore', () => {
+  const store = {};
+  const first = load(store).api;
+  first.startRun('training', 'explorer');
+  assert.equal(award(first, 'training', 'wood').unlocked, true);
+  assert.equal(award(first, 'outfit', 'wood').unlocked, false);
+  const savedRun = first.snapshotRun();
+  const returned = load(store).api;
+  assert.equal(returned.restoreRun(savedRun, 'training'), true);
+  assert.equal(award(returned, 'training', 'wood').unlocked, true);
+  assert.equal(award(returned, 'outfit', 'wood').unlocked, false);
+  returned.finishRun({ distance: 1 });
+  returned.noteNameSaved();
+  returned.startRun('classic', 'sunrider');
+  assert.equal(award(returned, 'outfit', 'wood').unlocked, true);
+});
+
+test('a training run paused before this fix gains its badge when restored', () => {
+  const store = {};
+  const first = load(store).api;
+  first.startRun('training', 'explorer');
+  const pending = first.snapshotRun();
+  const oldState = JSON.parse(store[KEY]);
+  oldState.trainingUsed = false;
+  delete oldState.unlocked['training.wood'];
+  store[KEY] = JSON.stringify(oldState);
+  const returned = load(store).api;
+  assert.equal(award(returned, 'training', 'wood').unlocked, false);
+  assert.equal(returned.restoreRun(pending, 'training'), true);
+  assert.equal(award(returned, 'training', 'wood').unlocked, true);
+  assert.equal(award(returned, 'outfit', 'wood').unlocked, false);
 });
 
 test('a stored nickname and selected outfit do not stand in for save and game starts', () => {

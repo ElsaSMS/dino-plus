@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#f5efe2" />
     <title>小恐龙 PLUS · 训练场</title>
-    <link rel="stylesheet" href="./styles.css?v=20260930-classic-overflow" />
+    <link rel="stylesheet" href="./styles.css?v=20261006-resume-countdown" />
     <link rel="stylesheet" href="./training.css?v=20260929-training" />
   </head>
   <body>
@@ -48,6 +48,7 @@
             <div class="canvas-wrap">
               <canvas id="game" width="1000" height="430" role="img" aria-label="小恐龙单体障碍训练画面"></canvas>
               <div class="hazard-warning" id="hazard-warning" role="img" aria-label="运动飞鸟即将出现" hidden>⚠️</div>
+              <div class="resume-countdown" id="resume-countdown" role="status" aria-label="即将继续游戏" hidden><span id="resume-countdown-number">3</span></div>
               <div class="game-hud" aria-live="off">
                 <div class="hud-stat"><span id="distance-label">练习距离</span><strong id="distance">0000</strong></div>
                 <div class="hud-divider"></div>
@@ -63,7 +64,7 @@
               </div>
             </div>
             <div class="game-footer">
-              <div class="keyboard-help"><span class="keycap">SPACE</span><span>跳跃 / 二连跳</span><span class="help-divider">·</span><span class="keycap">↓</span><span class="keycap">S</span><span>下蹲 / 空中速降</span></div>
+              <div class="keyboard-help"><span class="keycap">SPACE</span><span>跳跃 / 二连跳</span><span class="help-divider">·</span><span class="keycap">↑</span><span class="keycap">↓</span><span class="keycap">S</span><span>下蹲 / 空中速降</span></div>
               <div class="footer-actions">
                 <div class="audio-controls" role="group" aria-label="训练声音控制">
                   <button class="audio-toggle" id="audio-toggle" type="button" aria-pressed="true" title="关闭游戏声音">♫ 声音</button>
@@ -76,7 +77,7 @@
           </div>
           <div class="mobile-controls" aria-label="触屏训练控制">
             <button type="button" id="touch-duck" class="mobile-control duck-control">下蹲 / 速降 <span>↓</span></button>
-            <button type="button" id="touch-jump" class="mobile-control jump-control">跳跃 / 二连跳 <span>↑</span></button>
+            <button type="button" id="touch-jump" class="mobile-control jump-control">跳跃 / 二连跳 <span>⤴</span></button>
           </div>
           <p class="training-footnote">每轮速度固定为所选档位。障碍按经典模式的单体概率抽取，并在已选项目之间按比例重新分配。柱子悬崖作为一个完整障碍练习；训练不会写入正式纪录。</p>
         </section>
@@ -93,9 +94,9 @@
     <script src="./storage-reset.js?v=20261001-first-run" defer></script>
     <script src="./audio/audio.js" defer></script>
     <script src="./visual-models/models.js?v=20260930-open-cliffs" defer></script>
-    <script src="./achievements.js?v=20261001-pause-resume" defer></script>
+    <script src="./achievements.js?v=20261004-achievement-fixes" defer></script>
     <script src="./training.js?v=20260929-pillar-training" defer></script>
     <script src="./run-session.js?v=20261001-pause-resume" defer></script>
-    <script src="./game.js?v=20261001-pause-resume" defer></script>
+    <script src="./game.js?v=20261006-buffer-2s" defer></script>
   </body>
 </html>
