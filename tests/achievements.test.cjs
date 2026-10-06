@@ -6,12 +6,12 @@ const vm = require('node:vm');
 
 const source = fs.readFileSync(path.join(__dirname, '..', 'achievements.js'), 'utf8');
 const KEY = 'elsasms.dino-plus.v1.achievements';
-function load(store = {}) {
+function load(store = {}, trainingPage = false) {
   const localStorage = {
     getItem(key) { return store[key] ?? null; },
     setItem(key, value) { store[key] = value; }
   };
-  const window = { localStorage };
+  const window = { localStorage, ...(trainingPage ? { DinoTraining: {} } : {}) };
   vm.runInNewContext(source, { window });
   return { api: window.DinoAchievements, store };
 }
@@ -50,6 +50,9 @@ test('training unlocks at its first start; saved name and two started outfits re
   assert.equal(award(api, 'training', 'wood').unlocked, true);
   assert.equal(award(api, 'outfit', 'wood').unlocked, false);
   api.startRun('classic', 'stargazer');
+  assert.equal(award(api, 'outfit', 'wood').unlocked, false,
+    'a training start cannot supply the first outfit');
+  api.startRun('classic', 'explorer');
   assert.equal(award(api, 'outfit', 'wood').unlocked, true);
   assert.ok(notifications >= 4);
   unsubscribe();
@@ -75,6 +78,9 @@ test('training first earns its badge without naming or outfit progress, even acr
   returned.finishRun({ distance: 1 });
   returned.noteNameSaved();
   returned.startRun('classic', 'sunrider');
+  assert.equal(award(returned, 'outfit', 'wood').unlocked, false);
+  returned.noteNameSaved();
+  returned.startRun('classic', 'explorer');
   assert.equal(award(returned, 'outfit', 'wood').unlocked, true);
 });
 
@@ -92,6 +98,66 @@ test('a training run paused before this fix gains its badge when restored', () =
   assert.equal(returned.restoreRun(pending, 'training'), true);
   assert.equal(award(returned, 'training', 'wood').unlocked, true);
   assert.equal(award(returned, 'outfit', 'wood').unlocked, false);
+});
+
+test('training page contributes only 初入黄沙, even after many badge-worthy actions', () => {
+  const store = {};
+  const { api } = load(store, true);
+  api.noteNameSaved();
+  api.startRun('training', 'explorer');
+  for (let index = 0; index < 100; index++) api.record('highThornResult', { single: true });
+  api.record('birdResult', { over: true, small: true, single: true });
+  api.record('airCombo', { obstacles: 3, highKinds: ['thorn', 'bird'] });
+  api.record('cliffResult', { kind: 'gap', recovered: true, dived: true });
+  api.record('pickup', { kind: 'shield', seconds: 1 });
+  api.record('pickup', { kind: 'jetpack', seconds: 1.5 });
+  api.record('shieldBlastBird');
+  api.record('jetpackFillGap');
+  for (let index = 0; index < 3; index++) api.record('obstacleResult', { warned: true, cleared: true });
+  const pending = api.snapshotRun();
+  assert.equal(pending.thornSeen, 0);
+  assert.equal(pending.birdSeen, 0);
+  assert.equal(pending.cliffSeen, 0);
+  assert.equal(pending.lucky.warning, 0);
+  api.finishRun({ distance: 100000, completedExtreme: true, rescues: 0, overflow: true });
+  const saved = JSON.parse(store[KEY]);
+  assert.equal(saved.trainingUsed, true);
+  assert.equal(saved.nameSaved, false);
+  assert.deepEqual(saved.outfitsStarted, []);
+  assert.equal(saved.classic.total, 0);
+  assert.equal(saved.extreme.completions, 0);
+  assert.equal(saved.thorn.total, 0);
+  assert.equal(saved.bird.total, 0);
+  assert.equal(saved.air.any, false);
+  assert.equal(saved.cliff.any, false);
+  assert.ok(Object.values(saved.lucky).every((count) => count === 0));
+  assert.deepEqual(Object.keys(saved.unlocked), ['training.wood']);
+});
+
+test('restoring an old training run discards its former achievement counters', () => {
+  const store = {};
+  const first = load(store, true).api;
+  first.startRun('training', 'explorer');
+  const old = first.snapshotRun();
+  old.thornSeen = 100;
+  old.thornSingle = 100;
+  old.birdSeen = 1;
+  old.birdOver = 1;
+  old.airAny = true;
+  old.cliffSeen = 1;
+  old.cliffAny = true;
+  old.cliffRecovered = ['gap'];
+  old.lucky.warning = 1;
+  const returned = load(store, true).api;
+  assert.equal(returned.restoreRun(old, 'training'), true);
+  const fresh = returned.snapshotRun();
+  assert.equal(fresh.thornSeen, 0);
+  assert.equal(fresh.birdSeen, 0);
+  assert.equal(fresh.cliffSeen, 0);
+  assert.equal(fresh.airAny, false);
+  assert.equal(fresh.lucky.warning, 0);
+  returned.finishRun({ distance: 500 });
+  assert.deepEqual(Object.keys(JSON.parse(store[KEY]).unlocked), ['training.wood']);
 });
 
 test('a stored nickname and selected outfit do not stand in for save and game starts', () => {
@@ -205,20 +271,22 @@ test('classic distances and thorn counts accumulate only at the end, with idempo
   assert.equal(award(api, 'classic', 'gold').progress, '1000000/1000000');
 });
 
-test('a later run may unlock a gated tier using progress saved from earlier runs', () => {
+test('training actions never add formal progress; later formal runs unlock tiers normally', () => {
   const { api } = load();
   api.startRun('training');
   for (let i = 0; i < 100; i++) api.record('highThornResult', { single: true });
   api.finishRun({ distance: 300 });
-  assert.equal(award(api, 'thorn', 'bronze').unlocked, true);
+  assert.equal(award(api, 'training', 'wood').unlocked, true);
+  assert.equal(award(api, 'thorn', 'bronze').unlocked, false);
   assert.equal(award(api, 'thorn', 'silver').unlocked, false);
   assert.equal(award(api, 'thorn', 'gold').unlocked, false);
-  assert.equal(award(api, 'thorn', 'gold').progress, '100/100');
+  assert.equal(award(api, 'thorn', 'gold').progress, '0/100');
   api.startRun('classic');
   for (let i = 0; i < 3; i++) api.record('highThornResult', { single: true });
   api.finishRun({ distance: 20 });
   assert.equal(award(api, 'thorn', 'silver').unlocked, true);
-  assert.equal(award(api, 'thorn', 'gold').unlocked, true);
+  assert.equal(award(api, 'thorn', 'gold').unlocked, false);
+  assert.equal(award(api, 'thorn', 'gold').progress, '3/100');
 });
 
 test('overflow can earn every classic tier while the achievement counter remains consistent', () => {

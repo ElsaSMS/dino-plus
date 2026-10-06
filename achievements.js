@@ -220,13 +220,17 @@
         || !Number.isFinite(snapshot.lastPickup.seconds)
         || snapshot.lastPickup.seconds < 0))) return false;
     const restored = newRun(snapshot.mode);
-    for (const key of countKeys.concat(boolKeys)) restored[key] = snapshot[key];
-    restored.airPairs = new Set(snapshot.airPairs);
-    restored.cliffRecovered = new Set(snapshot.cliffRecovered);
-    for (const key of Object.keys(restored.lucky)) restored.lucky[key] = snapshot.lucky[key];
-    restored.lastPickup = snapshot.lastPickup ? {
-      kind: snapshot.lastPickup.kind, seconds: snapshot.lastPickup.seconds
-    } : null;
+    // Old parked training sessions may contain achievement events. Keep their
+    // gameplay session, but never carry those events into formal progress.
+    if (snapshot.mode !== 'training') {
+      for (const key of countKeys.concat(boolKeys)) restored[key] = snapshot[key];
+      restored.airPairs = new Set(snapshot.airPairs);
+      restored.cliffRecovered = new Set(snapshot.cliffRecovered);
+      for (const key of Object.keys(restored.lucky)) restored.lucky[key] = snapshot.lucky[key];
+      restored.lastPickup = snapshot.lastPickup ? {
+        kind: snapshot.lastPickup.kind, seconds: snapshot.lastPickup.seconds
+      } : null;
+    }
     state = readState();
     run = restored;
     if (snapshot.mode === 'training' && !state.trainingUsed) {
@@ -241,18 +245,21 @@
     if (!['classic', 'extreme', 'training'].includes(mode)) return;
     state = readState();
     run = newRun(mode);
-    if (typeof outfitId === 'string' && outfitId.trim() && outfitId.length < 40
-      && !state.outfitsStarted.includes(outfitId)) state.outfitsStarted.push(outfitId);
     if (mode === 'training') {
       state.trainingUsed = true;
       award('training', [true]);
+      save();
+      notify();
+      return;
     }
+    if (typeof outfitId === 'string' && outfitId.trim() && outfitId.length < 40
+      && !state.outfitsStarted.includes(outfitId)) state.outfitsStarted.push(outfitId);
     award('outfit', [state.nameSaved && state.outfitsStarted.length >= 2]);
     save();
     notify();
   }
   function record(type, payload = {}) {
-    if (!run || run.finished) return;
+    if (!run || run.finished || run.mode === 'training') return;
     if (!payload || typeof payload !== 'object') payload = {};
     switch (type) {
       case 'highThornResult':
@@ -313,6 +320,7 @@
     notify();
   }
   function noteNameSaved() {
+    if (global.DinoTraining || run?.mode === 'training') return;
     state = readState();
     if (state.nameSaved) return;
     state.nameSaved = true;
@@ -335,6 +343,12 @@
     if (!run || run.finished) return getView();
     run.finished = true;
     state = readState();
+    if (run.mode === 'training') {
+      state.trainingUsed = true;
+      award('training', [true]);
+      save(); notify();
+      return getView();
+    }
     const meters = whole(distance);
     const didOverflow = run.mode === 'classic' && (overflow === true || run.overflow);
     const extremeCompleted = run.mode === 'extreme' && completedExtreme === true && meters >= 100000;
@@ -349,7 +363,6 @@
       const used = whole(rescues);
       state.extreme.bestRescues = state.extreme.bestRescues === null ? used : Math.min(state.extreme.bestRescues, used);
     }
-    if (run.mode === 'training') state.trainingUsed = true;
     state.thorn.total += run.thornSingle;
     if (run.mode === 'classic') state.thorn.bestClassicRun = Math.max(state.thorn.bestClassicRun, run.thornSingle);
     state.bird.total += run.birdOver;

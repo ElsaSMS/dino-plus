@@ -2569,6 +2569,57 @@ test('shield shattering a distant moving bird and jetpack filling a landing gap 
   assert.equal(groups.find((group) => group.id === 'jetpackCliff').awards[0].unlocked, true);
 });
 
+test('blast collateral is not counted as an encountered high thorn, aerial bird or cliff', () => {
+  for (const cause of ['shield', 'rescue', 'jetpack']) {
+    for (const [kind, width, counter] of [
+      ['tallThorn', 84, 'thornSeen'],
+      ['duck', 68, 'birdSeen'],
+      ['gap', 160, 'cliffSeen']
+    ]) {
+      const game = createGame([], {}, null, 3.2, false, true);
+      if (cause === 'rescue') game.setExtreme(true);
+      game.startGame();
+      const target = game.makeObstacle(kind, cause === 'jetpack' ? 50 : 53, width);
+      game.setObstacles(cause === 'jetpack' ? [target]
+        : [game.makeObstacle('cactus', 0, 42), target]);
+      game.next(Infinity);
+      if (cause === 'shield') game.setShieldReady(true);
+      game.tick(cause === 'shield' ? .016 : .004);
+      assert.equal(target.achievement?.seen, true, `${cause}: ${kind} enters the tracking range`);
+      if (cause === 'jetpack') game.triggerBlast(true, 'jetpack');
+      for (let frame = 0; frame < 20 && game.obstacles().includes(target); frame++) game.tick(.016);
+      assert.equal(game.obstacles().includes(target), false, `${cause}: ${kind} is shattered`);
+      assert.equal(game.achievements.snapshotRun()[counter], 0,
+        `${cause}: shattered ${kind} was not attempted`);
+    }
+  }
+});
+
+test('the obstacle that causes a shield break or cliff rescue still counts as encountered', () => {
+  for (const [kind, width, counter] of [
+    ['tallThorn', 84, 'thornSeen'],
+    ['duck', 68, 'birdSeen']
+  ]) {
+    const game = createGame([], {}, null, 3.2, false, true);
+    game.startGame();
+    game.setObstacles([game.makeObstacle(kind, 0, width)]);
+    game.next(Infinity);
+    game.setShieldReady(true);
+    game.tick(.004);
+    assert.equal(game.achievements.snapshotRun()[counter], 1, kind);
+  }
+
+  const cliff = createGame([], {}, null, 3.2, false, true);
+  cliff.setExtreme(true);
+  cliff.startGame();
+  cliff.setObstacles([cliff.makeObstacle('gap', -20, 180)]);
+  cliff.next(Infinity);
+  cliff.player(0, 511, false);
+  cliff.setPlayerState({ grounded: false, jumps: 0, vy: 0 });
+  cliff.tick(.004);
+  assert.equal(cliff.achievements.snapshotRun().cliffSeen, 1);
+});
+
 test('escaping from below the screen credits a recovered cliff', () => {
   const game = createGame([], {}, null, 3.2, false, true);
   game.startGame();

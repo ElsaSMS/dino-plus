@@ -930,7 +930,10 @@
         achievements.record('jetpackFillGap');
         jetpackLandingGap = null;
       }
-      achievementFailObstacle(obstacle);
+      // A blast removes nearby obstacles before the player attempts them.
+      // Only the obstacle that actually caused the blast was failed by the
+      // collision/fall handler; collateral targets are not encounters.
+      recordAchievementObstacleResult(obstacle, false);
       shatterObstacle(obstacle);
       return false;
     });
