@@ -13,7 +13,8 @@ const families = [
     ['thorn', '一跃凌棘'],
     ['bird', '雄踞长空'],
     ['air-chain', '横渡苍穹'],
-    ['cliff', '绝壑回身']
+    ['cliff', '绝壑回身'],
+    ['upright', '昂首挺胸']
   ] })),
   { tier: 'crystal', sample: '双曜同辉', variants: [
     ['beak', '毫厘惊鸿'],
@@ -26,7 +27,8 @@ const families = [
     ['thorn', '一跃凌棘'],
     ['bird', '雄踞长空'],
     ['air-chain', '横渡苍穹'],
-    ['cliff', '绝壑回身']
+    ['cliff', '绝壑回身'],
+    ['upright', '昂首挺胸']
   ] }
 ];
 

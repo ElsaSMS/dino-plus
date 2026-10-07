@@ -422,6 +422,7 @@
   }
   function pressDown() {
     if (mode === 'paused' || mode === 'countdown' || mode === 'over' || mode === 'overflow' || jetpackActive) return;
+    if (mode === 'running') achievements.record('crouch', { distance: score() });
     if (player.grounded) { player.crouch = true; return; }
     if (player.feetY < H) for (const obstacle of obstacles) {
       if (isGapKind(obstacle.kind) && isOpenGap(obstacle)
@@ -984,8 +985,12 @@
     ui.warning.hidden = true;
   }
   function startJetpack() {
+    // A pickup is the end of the current airtime for achievement purposes.
+    // Finish hazards already passed, then exclude anything being crossed by flight.
+    clearAchievementObstacles(worldX - 11 * (player.crouch ? 1.17 : 1));
+    ignoreFlightAchievementObstacles(worldX);
+    finishAchievementAir();
     jetpackActive = true;
-    cancelAchievementAir();
     jetpackStartX = worldX;
     jetpackStartY = player.feetY;
     jetpackPickups = []; shieldPickups = [];
@@ -1031,11 +1036,27 @@
     };
     return obstacle.achievement;
   }
+  function ignoreFlightAchievementObstacles(previousWorldX) {
+    const left = Math.min(previousWorldX, worldX) - 35;
+    const right = Math.max(previousWorldX, worldX) + 49;
+    for (const obstacle of obstacles) {
+      if (obstacle.x >= right || obstacle.x + obstacle.width <= left) continue;
+      const state = achievementState(obstacle);
+      if (state.recorded) continue;
+      state.flightIgnored = true;
+      state.birdPending = false;
+      state.birdResultRecorded = true;
+      state.recorded = true;
+      // Flight interrupts a warning streak without treating the hazard as an attempt.
+      recordAchievementObstacleResult(obstacle, false);
+    }
+  }
   function trackAchievementObstacles() {
     const left = worldX - 35;
     const right = worldX + 49;
     for (const obstacle of obstacles) {
       const state = obstacle.achievement;
+      if (state?.flightIgnored) continue;
       if (isGapKind(obstacle.kind) && state?.deep && player.grounded
         && worldX > obstacle.x + obstacle.width && player.feetY <= GROUND) state.escaped = true;
       if (obstacle.x >= right || obstacle.x + obstacle.width <= left) continue;
@@ -1100,11 +1121,11 @@
     });
     scene.achievementOutcomeRecorded = true;
   }
-  function clearAchievementObstacles() {
+  function clearAchievementObstacles(clearedLeft = worldX - 35) {
     for (const obstacle of [...obstacles].sort((a, b) =>
       a.x + a.width - b.x - b.width)) {
       const state = obstacle.achievement;
-      if (!state?.seen || state.recorded || obstacle.x + obstacle.width >= worldX - 35) continue;
+      if (!state?.seen || state.recorded || obstacle.x + obstacle.width > clearedLeft) continue;
       if (isGapKind(obstacle.kind) && state.deep && !state.escaped && !player.grounded) continue;
       let highKind = null;
       if (obstacle.kind === 'tallThorn') {
@@ -1163,7 +1184,7 @@
     }
     const crossedAbove = [...candidates].filter((obstacle) => {
       const state = obstacle.achievement;
-      if (!state || state.airId !== achievementAir.id || state.mixedAir
+      if (!state || state.flightIgnored || state.airId !== achievementAir.id || state.mixedAir
         || obstacle.kind === 'skyPillar') return false;
       const startX = achievementAir.birdStarts.get(obstacle) ?? obstacle.x;
       if (achievementAir.takeoffRight > startX
@@ -1176,6 +1197,7 @@
     }).sort((a, b) => a.x + a.width - b.x - b.width);
     if (crossedAbove.length >= 2) {
       achievements.record('airCombo', { obstacles: crossedAbove.length,
+        jumps: achievementAir.maxJumps,
         highKinds: crossedAbove.map((obstacle) => obstacle.kind === 'tallThorn' ? 'thorn'
           : (obstacle.kind === 'duck' || obstacle.kind === 'movingHigh') ? 'bird' : null)
           .filter(Boolean) });
@@ -1230,6 +1252,8 @@
     sound.setIntensity(Math.min(1, Math.max(0, (speed / BASE_SPEED - 1) / 2)));
     // Stop at the finish, including the physics time step, rather than overshooting it.
     if (extremeMode) dt = Math.min(dt, Math.max(0, EXTREME_DISTANCE - worldX) / speed);
+    const previousWorldX = worldX;
+    const flightFrame = jetpackActive;
     elapsed += dt;
     worldX += speed * dt;
     if (!trainingMode && !extremeMode && score() > CLASSIC_INT_MAX) {
@@ -1292,7 +1316,7 @@
       }
     }
     const boxes = playerHitboxes();
-    trackAchievementObstacles();
+    if (!flightFrame) trackAchievementObstacles();
     if (shieldReady || jetpackActive) shieldPickups = [];
     else if (shieldPickups.some((pickup) => pickupHitsBoxes(pickup, boxes))) {
       shieldReady = true;
@@ -1304,6 +1328,7 @@
       achievements.record('pickup', { kind: 'jetpack', seconds: elapsed });
       startJetpack();
     }
+    if (flightFrame || jetpackActive) ignoreFlightAchievementObstacles(previousWorldX);
     const invincible = jetpackActive || elapsed < shieldBufferUntil;
     const fell = !invincible && (hitRightCliffWall(boxes) || player.feetY >= FALL_SCREEN_LIMIT);
     const hits = !invincible && !fell && elapsed >= shieldUntil ? obstacles.filter((o) => hitObstacle(o, boxes)) : [];

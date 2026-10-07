@@ -2342,6 +2342,102 @@ test('clearing high thorns and high birds in one airtime credits the real game e
   assert.equal(groups.find((group) => group.id === 'air').awards[0].unlocked, true);
 });
 
+test('all three crouch keys disqualify an upright run at the actual press', () => {
+  for (const key of ['ArrowDown', 'ArrowUp', 'KeyS']) {
+    const game = createGame([], {}, null, 3.2, false, true);
+    game.startGame();
+    assert.equal(game.achievements.snapshotRun().uprightDownUsed, false);
+    game.keyDown(key);
+    assert.equal(game.achievements.snapshotRun().uprightDownUsed, true, key);
+  }
+});
+
+test('jetpack pickup closes the existing airtime and credits only completed preflight maneuvers', () => {
+  const game = createGame([], {}, null, 3.2, false, true);
+  game.startGame();
+  game.player(25000, 320, false);
+  const first = game.makeObstacle('tallThorn', 25200, 84);
+  const second = game.makeObstacle('tallThorn', 25350, 84);
+  game.setObstacles([first, second]);
+  game.next(Infinity);
+  game.keyDown('Space');
+  for (const x of [25220, 25370]) {
+    game.player(x, 180, false);
+    game.setPlayerState({ feetY: 180, vy: 0, grounded: false });
+    game.tick(.016);
+    if (x === 25220) game.keyDown('Space');
+  }
+  assert.equal(game.achievements.snapshotRun().airTwoHigh, false,
+    'the airtime is still open before the pickup');
+  game.player(25500, 180, false);
+  game.setPlayerState({ feetY: 180, vy: 0, grounded: false });
+  const body = game.playerBoxes()[0];
+  game.setJetpackPickups([{ kind: 'jetpack', x: (body.left + body.right) / 2,
+    y: (body.top + body.bottom) / 2 }]);
+  game.tick(.004);
+  const run = game.achievements.snapshotRun();
+  assert.equal(game.jetpackActive(), true);
+  assert.equal(run.airTwoHigh, true, 'the virtual landing finalizes the airborne combination');
+  assert.equal(run.uprightCombo, true, 'the combination used exactly two jumps');
+  assert.equal(run.thornSeen, 2);
+});
+
+test('a jetpack pickup separates a fully passed thorn from one still under the player', () => {
+  for (const [pickupX, expected] of [[25295, 1], [25280, 0]]) {
+    const game = createGame([], {}, null, 3.2, false, true);
+    game.startGame();
+    game.player(25000, 320, false);
+    const thorn = game.makeObstacle('tallThorn', 25200, 84);
+    game.setObstacles([thorn]);
+    game.next(Infinity);
+    game.keyDown('Space');
+    game.player(25220, 180, false);
+    game.setPlayerState({ feetY: 180, vy: 0, grounded: false });
+    game.tick(.004);
+    game.player(pickupX, 180, false);
+    game.startJetpack();
+    const run = game.achievements.snapshotRun();
+    assert.equal(run.thornSeen, expected, pickupX);
+    assert.equal(run.thornSingle, expected, pickupX);
+    assert.equal(Boolean(thorn.achievement?.flightIgnored), expected === 0, pickupX);
+  }
+});
+
+test('hazards crossed during jetpack flight are excluded from operation achievements', () => {
+  const game = createGame([], {}, null, 3.2, false, true);
+  game.startGame();
+  const flown = [
+    game.makeObstacle('tallThorn', 1000, 84),
+    game.makeObstacle('duck', 2200, 68),
+    game.makeObstacle('gap', 3400, 240),
+    game.makeObstacle('tallThorn', 8000, 84)
+  ];
+  game.setObstacles(flown);
+  game.next(Infinity);
+  game.startJetpack();
+  for (const x of [1030, 2230, 3500, 8005]) {
+    game.player(x, 200, false);
+    game.tick(.004);
+  }
+  assert.equal(game.jetpackActive(), false);
+  const run = game.achievements.snapshotRun();
+  assert.equal(run.thornSeen, 0);
+  assert.equal(run.birdSeen, 0);
+  assert.equal(run.cliffSeen, 0);
+  assert.equal(run.airAny, false);
+  assert.ok(flown.slice(0, 3).every((obstacle) => obstacle.achievement?.flightIgnored === true));
+  assert.equal(game.obstacles().includes(flown[3]), false,
+    'the landing blast removes the last flight hazard before it can be counted');
+  const after = game.makeObstacle('tallThorn', 9000, 84);
+  game.setObstacles([after]);
+  for (const x of [9020, 9160]) {
+    game.player(x, 320, false);
+    game.tick(.004);
+  }
+  assert.equal(game.achievements.snapshotRun().thornSeen, 1,
+    'the next ordinary obstacle is counted normally after flight');
+});
+
 test('one pillar cliff counts as one crossed gap, not a two-obstacle air chain', () => {
   const game = createGame([], {}, null, 3.2, false, true);
   game.startGame();

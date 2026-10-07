@@ -51,6 +51,12 @@
       ['gold', '金', 'gold-cliff.svg', '主动下蹲深入悬崖底部，再成功跳出'],
       ['hidden', '隐藏', 'hidden-cliff.svg', null]
     ] },
+    { id: 'upright', name: '昂首挺胸', category: '身法入微', badges: [
+      ['bronze', '铜', 'bronze-upright.svg', '经典模式单局不下蹲达到 2000 米'],
+      ['silver', '银', 'silver-upright.svg', '经典模式单局不下蹲达到 5000 米'],
+      ['gold', '金', 'gold-upright.svg', '极限模式不下蹲完赛，续命不超过 100 次'],
+      ['hidden', '隐藏', 'hidden-upright.svg', null]
+    ] },
     { id: 'dual', name: '双曜同辉', category: '奇遇流光', badges: [
       ['crystal', '水晶', 'crystal.svg', '一秒内连续获得护盾和喷气背包']
     ] },
@@ -80,6 +86,7 @@
     bird: { total: 0, smallSingle: false },
     air: { any: false, high: false, twoHigh: false },
     cliff: { any: false, bestKinds: 0, dived: false },
+    upright: { classicBest: 0, extremeBestRescues: null, hiddenQualified: false },
     lucky: { dual: 0, beak: 0, shieldBird: 0, jetpackCliff: 0, warning: 0 },
     unlocked: {}
   });
@@ -136,6 +143,10 @@
     state.cliff.any = boolean(saved.cliff?.any);
     state.cliff.bestKinds = Math.min(3, whole(saved.cliff?.bestKinds));
     state.cliff.dived = boolean(saved.cliff?.dived);
+    state.upright.classicBest = whole(saved.upright?.classicBest);
+    state.upright.extremeBestRescues = Number.isFinite(saved.upright?.extremeBestRescues)
+      && saved.upright.extremeBestRescues >= 0 ? whole(saved.upright.extremeBestRescues) : null;
+    state.upright.hiddenQualified = boolean(saved.upright?.hiddenQualified);
     for (const key of Object.keys(state.lucky)) state.lucky[key] = whole(saved.lucky?.[key]);
     if (saved.unlocked && typeof saved.unlocked === 'object') {
       for (const group of groups) for (const [tier] of group.badges) {
@@ -168,6 +179,8 @@
       birdSeen: 0, birdOver: 0, birdSmallSingle: false,
       airAny: false, airHigh: false, airTwoHigh: false, airPairs: new Set(),
       cliffSeen: 0, cliffAllDived: true, cliffRecovered: new Set(), cliffAny: false, cliffDived: false,
+      uprightDownUsed: false, uprightBeforeDown: 0,
+      uprightThorn: false, uprightBird: false, uprightCombo: false,
       lucky: { dual: 0, beak: 0, shieldBird: 0, jetpackCliff: 0, warning: 0 },
       warningStreak: 0, lastPickup: null, overflow: false
     };
@@ -177,7 +190,7 @@
   function snapshotRun() {
     if (!run || run.finished) return null;
     return {
-      version: 1, mode: run.mode,
+      version: 2, mode: run.mode,
       thornSeen: run.thornSeen, thornSingle: run.thornSingle,
       birdSeen: run.birdSeen, birdOver: run.birdOver, birdSmallSingle: run.birdSmallSingle,
       airAny: run.airAny, airHigh: run.airHigh, airTwoHigh: run.airTwoHigh,
@@ -185,6 +198,9 @@
       cliffSeen: run.cliffSeen, cliffAllDived: run.cliffAllDived,
       cliffRecovered: [...run.cliffRecovered], cliffAny: run.cliffAny,
       cliffDived: run.cliffDived,
+      uprightDownUsed: run.uprightDownUsed, uprightBeforeDown: run.uprightBeforeDown,
+      uprightThorn: run.uprightThorn,
+      uprightBird: run.uprightBird, uprightCombo: run.uprightCombo,
       lucky: { ...run.lucky }, warningStreak: run.warningStreak,
       lastPickup: run.lastPickup ? { ...run.lastPickup } : null,
       overflow: run.overflow
@@ -199,15 +215,18 @@
     }
     const modes = ['classic', 'extreme', 'training'];
     if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)
-      || snapshot.version !== 1 || !modes.includes(snapshot.mode)
+      || ![1, 2].includes(snapshot.version) || !modes.includes(snapshot.mode)
       || (expectedMode !== undefined && snapshot.mode !== expectedMode)) return false;
     const countKeys = ['thornSeen', 'thornSingle', 'birdSeen', 'birdOver',
       'cliffSeen', 'warningStreak'];
     const boolKeys = ['birdSmallSingle', 'airAny', 'airHigh', 'airTwoHigh',
       'cliffAllDived', 'cliffAny', 'cliffDived', 'overflow'];
+    const uprightKeys = ['uprightDownUsed', 'uprightThorn', 'uprightBird', 'uprightCombo'];
     const validCount = (value) => Number.isSafeInteger(value) && value >= 0;
     if (countKeys.some((key) => !validCount(snapshot[key]))
       || boolKeys.some((key) => typeof snapshot[key] !== 'boolean')
+      || (snapshot.version === 2 && uprightKeys.some((key) => typeof snapshot[key] !== 'boolean'))
+      || (snapshot.version === 2 && !validCount(snapshot.uprightBeforeDown))
       || snapshot.thornSingle > snapshot.thornSeen || snapshot.birdOver > snapshot.birdSeen
       || !Array.isArray(snapshot.airPairs)
       || snapshot.airPairs.some((pair) => !PAIRS.includes(pair))
@@ -224,6 +243,10 @@
     // gameplay session, but never carry those events into formal progress.
     if (snapshot.mode !== 'training') {
       for (const key of countKeys.concat(boolKeys)) restored[key] = snapshot[key];
+      if (snapshot.version === 2) {
+        for (const key of uprightKeys) restored[key] = snapshot[key];
+        restored.uprightBeforeDown = snapshot.uprightBeforeDown;
+      } else restored.uprightDownUsed = true; // Earlier runs cannot prove that no crouch occurred.
       restored.airPairs = new Set(snapshot.airPairs);
       restored.cliffRecovered = new Set(snapshot.cliffRecovered);
       for (const key of Object.keys(restored.lucky)) restored.lucky[key] = snapshot.lucky[key];
@@ -262,15 +285,25 @@
     if (!run || run.finished || run.mode === 'training') return;
     if (!payload || typeof payload !== 'object') payload = {};
     switch (type) {
+      case 'crouch':
+        if (!run.uprightDownUsed && run.mode === 'classic') run.uprightBeforeDown = whole(payload.distance);
+        run.uprightDownUsed = true;
+        break;
       case 'highThornResult':
         run.thornSeen++;
-        if (payload.single === true) run.thornSingle++;
+        if (payload.single === true) {
+          run.thornSingle++;
+          run.uprightThorn = true;
+        }
         break;
       case 'birdResult':
         run.birdSeen++;
         if (payload.over === true) {
           run.birdOver++;
-          if (payload.small === true && payload.single === true) run.birdSmallSingle = true;
+          if (payload.small === true && payload.single === true) {
+            run.birdSmallSingle = true;
+            run.uprightBird = true;
+          }
         }
         break;
       case 'airCombo': {
@@ -280,7 +313,10 @@
         const kinds = Array.isArray(payload.highKinds)
           ? payload.highKinds.filter((kind) => kind === 'thorn' || kind === 'bird') : [];
         if (kinds.length) run.airHigh = true;
-        if (kinds.length >= 2) run.airTwoHigh = true;
+        if (kinds.length >= 2) {
+          run.airTwoHigh = true;
+          if (payload.jumps === 2) run.uprightCombo = true;
+        }
         for (let index = 1; index < kinds.length; index++) run.airPairs.add(`${kinds[index - 1]}-${kinds[index]}`);
         break;
       }
@@ -363,6 +399,15 @@
       const used = whole(rescues);
       state.extreme.bestRescues = state.extreme.bestRescues === null ? used : Math.min(state.extreme.bestRescues, used);
     }
+    if (run.mode === 'classic') state.upright.classicBest = Math.max(state.upright.classicBest,
+      run.uprightDownUsed ? run.uprightBeforeDown : meters);
+    if (extremeCompleted && !run.uprightDownUsed) {
+      const used = whole(rescues);
+      state.upright.extremeBestRescues = state.upright.extremeBestRescues === null
+        ? used : Math.min(state.upright.extremeBestRescues, used);
+    }
+    if (run.mode === 'classic' && !run.uprightDownUsed && run.uprightThorn
+      && run.uprightBird && run.uprightCombo) state.upright.hiddenQualified = true;
     state.thorn.total += run.thornSingle;
     if (run.mode === 'classic') state.thorn.bestClassicRun = Math.max(state.thorn.bestClassicRun, run.thornSingle);
     state.bird.total += run.birdOver;
@@ -396,6 +441,9 @@
     award('cliff', [state.cliff.any, state.cliff.bestKinds >= 3,
       state.cliff.dived,
       extremeCompleted && run.cliffSeen > 0 && run.cliffAllDived]);
+    award('upright', [state.upright.classicBest >= 2000, state.upright.classicBest >= 5000,
+      state.upright.extremeBestRescues !== null && state.upright.extremeBestRescues <= 100,
+      state.upright.hiddenQualified]);
     for (const kind of Object.keys(state.lucky)) {
       const groupId = kind === 'dual' ? 'dual' : kind === 'beak' ? 'beak'
         : kind === 'shieldBird' ? 'shieldBird' : kind === 'jetpackCliff' ? 'jetpackCliff' : 'warning';
@@ -426,6 +474,10 @@
         capped(state.air.twoHigh || pending?.airTwoHigh ? 1 : 0, 1)],
       cliff: [capped(state.cliff.any || pending?.cliffAny ? 1 : 0, 1), capped(bestCliff, 3),
         capped(state.cliff.dived || pending?.cliffDived ? 1 : 0, 1)],
+      upright: [capped(Math.max(state.upright.classicBest, pending?.uprightBeforeDown || 0), 2000),
+        capped(Math.max(state.upright.classicBest, pending?.uprightBeforeDown || 0), 5000),
+        state.upright.extremeBestRescues === null ? '最佳续命：尚未无蹲完赛'
+          : `最佳续命：${state.upright.extremeBestRescues} 次`],
       dual: [`当前遇到 ${liveLucky('dual')} 次`],
       beak: [`当前遇到 ${liveLucky('beak')} 次`],
       shieldBird: [`当前遇到 ${liveLucky('shieldBird')} 次`],

@@ -19,10 +19,10 @@ function award(api, groupId, tier) {
   return api.getView().groups.find((group) => group.id === groupId).awards.find((item) => item.tier === tier);
 }
 
-test('catalogue has all 31 named badges and every image resolves', () => {
+test('catalogue has all 35 named badges and every image resolves', () => {
   const { api } = load();
   const groups = api.getView().groups;
-  assert.equal(groups.reduce((sum, group) => sum + group.awards.length, 0), 31);
+  assert.equal(groups.reduce((sum, group) => sum + group.awards.length, 0), 35);
   assert.equal(groups.find((group) => group.id === 'extreme').name, '万里归途');
   assert.equal(groups.find((group) => group.id === 'training').name, '初入黄沙');
   assert.equal(groups.find((group) => group.id === 'bird').name, '雄踞长空');
@@ -502,4 +502,104 @@ test('a suspended game run sees achievements earned on another page without losi
   assert.equal(game.restoreRun(snapshot, 'classic'), true);
   assert.equal(award(game, 'training', 'wood').unlocked, true);
   assert.equal(award(game, 'thorn', 'bronze').progress, '1/1');
+});
+
+test('昂首挺胸 distance tiers count only the classic prefix before the first crouch', () => {
+  const { api } = load();
+  api.startRun('classic');
+  api.record('crouch', { distance: 1999 });
+  api.finishRun({ distance: 6000 });
+  assert.equal(award(api, 'upright', 'bronze').unlocked, false);
+  api.startRun('classic');
+  api.record('crouch', { distance: 2100 });
+  api.record('crouch', { distance: 5500 });
+  api.finishRun({ distance: 6000 });
+  assert.equal(award(api, 'upright', 'bronze').unlocked, true);
+  assert.equal(award(api, 'upright', 'silver').unlocked, false);
+  assert.equal(award(api, 'upright', 'silver').progress, '2100/5000');
+  api.startRun('classic');
+  api.finishRun({ distance: 5000 });
+  assert.equal(award(api, 'upright', 'silver').unlocked, true);
+});
+
+test('昂首挺胸 gold needs an uncrouched extreme finish within 100 rescues', () => {
+  const { api } = load();
+  api.startRun('classic'); api.finishRun({ distance: 5000 });
+  api.startRun('extreme');
+  api.record('crouch', { distance: 500 });
+  api.finishRun({ distance: 100000, completedExtreme: true, rescues: 0 });
+  assert.equal(award(api, 'upright', 'gold').unlocked, false);
+  api.startRun('extreme');
+  api.finishRun({ distance: 100000, completedExtreme: true, rescues: 101 });
+  assert.equal(award(api, 'upright', 'gold').unlocked, false);
+  api.startRun('extreme');
+  api.finishRun({ distance: 100000, completedExtreme: true, rescues: 100 });
+  assert.equal(award(api, 'upright', 'gold').unlocked, true);
+});
+
+test('昂首挺胸 hidden needs all three maneuvers in one uncrouched classic run', () => {
+  const { api } = load();
+  api.startRun('classic'); api.finishRun({ distance: 5000 });
+  api.startRun('extreme'); api.finishRun({ distance: 100000, completedExtreme: true, rescues: 100 });
+  api.startRun('classic');
+  api.record('highThornResult', { single: true });
+  api.record('birdResult', { over: true, small: true, single: true });
+  api.record('airCombo', { obstacles: 2, highKinds: ['thorn', 'bird'], jumps: 1 });
+  api.finishRun({ distance: 600 });
+  assert.equal(award(api, 'upright', 'hidden').unlocked, false);
+  api.startRun('classic');
+  api.record('highThornResult', { single: true });
+  api.record('birdResult', { over: true, small: true, single: true });
+  api.record('airCombo', { obstacles: 2, highKinds: ['bird', 'thorn'], jumps: 2 });
+  api.record('crouch', { distance: 200 });
+  api.finishRun({ distance: 600 });
+  assert.equal(award(api, 'upright', 'hidden').unlocked, false);
+  api.startRun('classic');
+  api.record('highThornResult', { single: true });
+  api.record('birdResult', { over: true, small: true, single: true });
+  api.record('airCombo', { obstacles: 2, highKinds: ['bird', 'thorn'], jumps: 2 });
+  api.finishRun({ distance: 600 });
+  assert.equal(award(api, 'upright', 'hidden').unlocked, true);
+});
+
+test('昂首挺胸 remembers a completed hidden feat until the earlier tiers are earned', () => {
+  const store = {};
+  const { api } = load(store);
+  api.startRun('classic');
+  api.record('highThornResult', { single: true });
+  api.record('birdResult', { over: true, small: true, single: true });
+  api.record('airCombo', { obstacles: 2, highKinds: ['thorn', 'bird'], jumps: 2 });
+  api.finishRun({ distance: 5000 });
+  assert.equal(award(api, 'upright', 'silver').unlocked, true);
+  assert.equal(award(api, 'upright', 'hidden').unlocked, false);
+  const restored = load(store).api;
+  restored.startRun('extreme');
+  restored.finishRun({ distance: 100000, completedExtreme: true, rescues: 100 });
+  assert.equal(award(restored, 'upright', 'hidden').unlocked, true);
+});
+
+test('parked runs keep crouch and maneuver state; old snapshots cannot prove a no-crouch run', () => {
+  const store = {};
+  const first = load(store).api;
+  first.startRun('classic');
+  first.record('highThornResult', { single: true });
+  first.record('crouch', { distance: 2100 });
+  const saved = JSON.parse(JSON.stringify(first.snapshotRun()));
+  const second = load(store).api;
+  assert.equal(second.restoreRun(saved, 'classic'), true);
+  assert.equal(second.snapshotRun().uprightThorn, true);
+  assert.equal(second.snapshotRun().uprightBeforeDown, 2100);
+  second.finishRun({ distance: 5000 });
+  assert.equal(award(second, 'upright', 'bronze').unlocked, true);
+  assert.equal(award(second, 'upright', 'silver').unlocked, false);
+  const old = { ...saved, version: 1 };
+  delete old.uprightDownUsed;
+  delete old.uprightBeforeDown;
+  delete old.uprightThorn;
+  delete old.uprightBird;
+  delete old.uprightCombo;
+  const third = load().api;
+  assert.equal(third.restoreRun(old, 'classic'), true);
+  third.finishRun({ distance: 5000 });
+  assert.equal(award(third, 'upright', 'bronze').unlocked, false);
 });
